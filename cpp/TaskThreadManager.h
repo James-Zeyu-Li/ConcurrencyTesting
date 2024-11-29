@@ -22,8 +22,8 @@ private:
 
   // stop flags for threads
   std::atomic<bool> stopProducer;
-  std::atomic<bool> stopReader;
   std::atomic<bool> stopConsumer;
+  std::atomic<bool> stopReader;
 
   // static thread functions
   static void *producerThread(void *arg);

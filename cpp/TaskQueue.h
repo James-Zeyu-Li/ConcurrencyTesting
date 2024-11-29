@@ -17,9 +17,9 @@ struct Task {
 class TaskQueue {
 private:
   std::queue<Task> tasksQueue;
+  LockType lockType; // type of lock, mutex or rwlock
   MutexLock *mutexLock;
   RWLock *rwLock;
-  LockType lockType; // type of lock, mutex or rwlock
   pthread_cond_t cond; // provide wait and signal functionality
 
   void lock();   // lock the queue, based on the lock type

@@ -5,8 +5,7 @@
 
 using namespace std;
 
-TaskThreadManager::TaskThreadManager(const std::string &filePath,
-                                     TaskQueue &queue)
+TaskThreadManager::TaskThreadManager(const ::string &filePath, TaskQueue &queue)
     : csvFileHandler(new CSVFileHandler(filePath)), taskQueue(&queue),
       stopProducer(false), stopConsumer(false), stopReader(false) {}
 
@@ -16,29 +15,33 @@ TaskThreadManager::~TaskThreadManager() { delete csvFileHandler; }
 void TaskThreadManager::executeTask(const Task &task) {
   try {
     // write a row to the CSV file as one execution is done
-    csvFileHandler->writeRow({std::to_string(task.id), task.name,
+    csvFileHandler->writeRow({to_string(task.id), task.name,
                               task.isCompleted ? "Complete" : "Incomplete"});
-    std::cout << "[Tasks] Executed Task ID: " << task.id << std::endl;
-  } catch (const std::exception &e) {
-    std::cerr << "[Tasks] Error writing to CSV: " << e.what() << std::endl;
+    cout << "Executed Task ID: " << task.id << ::endl;
+  } catch (const ::exception &e) {
+    cerr << " Error writing to CSV: " << e.what() << ::endl;
   }
 
-  std::cout << "Executing task: " << task.id << " " << task.name << std::endl;
+  cout << "Executing task: " << task.id << " " << task.name << ::endl;
 }
 
 // producer thread ------------------------------
 // Producer thread function
 void *TaskThreadManager::producerThread(void *arg) {
-  auto *data = static_cast<std::pair<TaskThreadManager *, int> *>(arg);
+  auto *data = static_cast<::pair<TaskThreadManager *, int> *>(arg);
   TaskThreadManager *tasks = data->first; // get the tasks object
   int numTasks = data->second;            // get the number of tasks
 
   for (int i = 1; i <= numTasks; ++i) {
-    Task t = {i, "Task_" + std::to_string(i), false};
+    if (tasks->stopProducer) {
+      break;
+    }
+
+    Task t = {i, "Task_" + to_string(i), false};
     tasks->taskQueue->enqueue(t);
-    std::cout << "[Producer] Enqueued Task ID: " << t.id << std::endl;
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(50)); // delay for 50 milliseconds
+    cout << " Enqueued Task ID: " << t.id << endl;
+    this_thread::sleep_for(
+        chrono::milliseconds(50)); // delay for 50 milliseconds
   }
   delete data;
   return nullptr;
@@ -65,14 +68,14 @@ void *TaskThreadManager::consumerThread(void *arg) {
 
   while (!manager->stopConsumer) {
     Task t;
-    if (t.id == -1) {
-      break;
-      // debug print ------------------------------
-      cout << "Exiting consumer thread" << endl;
-    }
-
-    if (manager->taskQueue->dequeue(t)) {
-      manager->executeTask(t);
+    if (manager->taskQueue->isEmpty()) {
+      if (t.id == -1) {
+        cout << "customer Received Termination Signal" << endl;
+        break;
+      }
+      if (manager->taskQueue->dequeue(t)) {
+        manager->executeTask(t);
+      }
     }
   }
   return nullptr;
@@ -87,8 +90,11 @@ void TaskThreadManager::startConsumerThread() {
 // stop the consumer thread
 void TaskThreadManager::stopConsumerThread(int consumerTaskCount) {
   stopConsumer = true;
-  Task endTask = {-1, "Exit", false}; // create a task with id -1
-  threadManager.exitThread();
+  for (int i = 0; i < consumerTaskCount; ++i) {
+    Task endTask = {-1, "Exit", false}; // create a task with id -1
+    taskQueue->enqueue(endTask);
+  }
+  cout << "  Consumer Enqueued Exit Task" << endl;
 }
 //----------------------------------------------
 
@@ -101,15 +107,15 @@ void *TaskThreadManager::readerThread(void *arg) {
   while (!manager->stopReader.load()) {
     try {
       auto rows = manager->csvFileHandler->readAll();
-      cout << "[Reader] CSV Content:" << endl;
+      cout << "  Reader    CSV Content:" << endl;
       for (const auto &row : rows) {
         for (const auto &cell : row) {
           cout << cell << " ";
         }
         cout << endl;
       }
-    } catch (const std::exception &e) {
-      cerr << "[Reader] Error reading CSV: " << e.what() << endl;
+    } catch (const ::exception &e) {
+      cerr << "  Reader    Error reading CSV: " << e.what() << endl;
     }
     this_thread::sleep_for(chrono::seconds(5));
   }
@@ -126,7 +132,7 @@ void TaskThreadManager::startReaderThread() {
 // stop the reader thread
 void TaskThreadManager::stopReaderThread() {
   stopReader = true;
-  threadManager.exitThread();
+  cout << "  Reader   Stopping Reader Thread" << endl;
 }
 //----------------------------------------------
 
@@ -136,7 +142,6 @@ void TaskThreadManager::customTasks(int producerThreads, int produceCount,
                                     int writeCount) {
   // average job per thread
   int tasksPerProducer = produceCount / producerThreads;
-  int tasksPerConsumer = writeCount / consumerThreads;
 
   // start producer threads
   for (int i = 0; i < producerThreads; ++i) {
@@ -149,8 +154,6 @@ void TaskThreadManager::customTasks(int producerThreads, int produceCount,
 
   // start consumer threads
   for (int i = 0; i < consumerThreads; ++i) {
-    int startTaskId = i * tasksPerConsumer + 1;
-    int endTaskId = min((i + 1) * tasksPerConsumer, produceCount);
     startConsumerThread();
   }
 
@@ -161,25 +164,23 @@ void TaskThreadManager::customTasks(int producerThreads, int produceCount,
 
   stopConsumerThread(consumerThreads); // stop consumer threads
   // wait for some time to ensure all consumer threads are stopped
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  this_thread::sleep_for(::chrono::seconds(2));
 
   // stopReaderThread
   stopReaderThread();
   // wait for some time to ensure all reader threads are stopped
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  this_thread::sleep_for(::chrono::seconds(2));
 
   // Verify CSV content, check if all tasks are written
   try {
     auto rows = csvFileHandler->readAll();
     if (rows.size() >= static_cast<size_t>(writeCount)) {
-      std::cout << "[CustomTasks] All tasks written successfully to CSV!"
-                << std::endl;
+      cout << " All tasks written successfully to CSV!" << endl;
     } else {
-      std::cerr << "[CustomTasks] Missing tasks in CSV. Expected at least "
-                << writeCount << ", found " << rows.size() << "." << std::endl;
+      cerr << "Missing tasks in CSV. Expected at least " << writeCount
+           << ", found " << rows.size() << "." << endl;
     }
-  } catch (const std::exception &e) {
-    std::cerr << "[CustomTasks] Error verifying CSV content: " << e.what()
-              << std::endl;
+  } catch (const ::exception &e) {
+    cerr << " Error verifying CSV content: " << e.what() << endl;
   }
 }
