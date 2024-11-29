@@ -14,3 +14,7 @@ void MutexLock::mutexLockOn() { pthread_mutex_lock(&mutex); }
 void MutexLock::mutexUnlock() { pthread_mutex_unlock(&mutex); }
 
 MutexLock::~MutexLock() { pthread_mutex_destroy(&mutex); }
+
+void MutexLock::waitOnCondition(pthread_cond_t *cond) {
+  pthread_cond_wait(cond, &mutex);
+}

@@ -20,9 +20,6 @@ public:
   // write a row to CSV file
   void writeRow(const std::vector<std::string> &row);
 
-  // read a row from CSV file
-  bool readRow(std::vector<std::string> &row);
-
   // read all from CSV file
   std::vector<std::vector<std::string>> readAll();
 

@@ -31,31 +31,6 @@ void CSVFileHandler::writeRow(const std::vector<std::string> &row) {
   fileStream << endl;
 }
 
-// read a row from CSV file, file open in read mode
-bool CSVFileHandler::readRow(std::vector<std::string> &row) {
-  if (!fileStream.is_open()) {
-    fileStream.open(filePath, std::ios::in); // open file in read mode
-  }
-
-  if (!fileStream.is_open()) {
-    throw std::runtime_error("Cannot open file: " + filePath);
-  }
-
-  row.clear();
-
-  string line;
-  if (getline(fileStream, line)) {
-    stringstream lineStream(line);
-    string cell;
-    while (getline(lineStream, cell, ',')) {
-      row.push_back(cell);
-    }
-    return true;
-  }
-  fileStream.close();
-  return false;
-}
-
 // read all from CSV file, file open in read mode
 vector<vector<string>> CSVFileHandler::readAll() {
   fileStream.open(filePath, ios::in); // open file in read mode

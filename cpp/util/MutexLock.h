@@ -12,6 +12,8 @@ class MutexLock {
   void mutexLockOn();
   void mutexUnlock();
   ~MutexLock();
+
+  void waitOnCondition(pthread_cond_t *cond);
 };
 
 #endif  // MUTEXLOCK_H
