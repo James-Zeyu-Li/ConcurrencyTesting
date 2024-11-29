@@ -30,24 +30,6 @@ void ThreadManager::joinThread(pthread_t thread) {
   }
 }
 
-// detach thread, thread run independently
-void ThreadManager::detachThread(pthread_t thread) {
-  if (pthread_detach(thread) == 0) {
-    threadStatus[thread] = "Detached";
-  } else {
-    throw std::runtime_error("Failed to detach thread");
-  }
-}
-
-// cancel thread,
-void ThreadManager::cancelThread(pthread_t thread) {
-  if (pthread_cancel(thread) == 0) {
-    threadStatus[thread] = "Cancelled";
-  } else {
-    throw std::runtime_error("Failed to cancel thread");
-  }
-}
-
 // exit thread
 void ThreadManager::exitThread() { pthread_exit(NULL); }
 

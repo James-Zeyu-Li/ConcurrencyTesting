@@ -20,11 +20,7 @@ public:
   void joinThread(
       pthread_t thread); // Join the thread, wait for the thread to finish
 
-  void
-  detachThread(pthread_t thread); // Detach the thread, thread run independently
-
-  void exitThread();                   // Exit the thread
-  void cancelThread(pthread_t thread); // Cancel the thread
+  void exitThread(); // Exit the thread
 
   // get thread status for single thread
   std::string getThreadStatus(pthread_t thread);
