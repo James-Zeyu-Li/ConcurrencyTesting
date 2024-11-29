@@ -74,8 +74,14 @@ void TaskQueue::enqueue(const Task &t) {
 bool TaskQueue::dequeue(Task &t) {
   lock(); // lock the queue
 
-  while (tasksQueue.empty() && lockType != LockType::NoLock) {
+  if (lockType == LockType::NoLock) {
+    if (tasksQueue.empty()) {
+      unlock();
+      return false; // No task to dequeue
+    }
+  }
 
+  while (tasksQueue.empty() && lockType != LockType::NoLock) {
     if (lockType == LockType::Mutex && mutexLock) {
       cout << "Queue is empty, waiting for tasks" << endl;
       mutexLock->waitOnCondition(&cond); // wait for the condition
@@ -103,6 +109,7 @@ bool TaskQueue::dequeue(Task &t) {
     // ---------------------------------------------
     cout << "Task " << t.id << " is removed from the queue" << endl;
     // ----------------------------------------------------------------------
+
     unlock(); // unlock the queue
     return true;
   }

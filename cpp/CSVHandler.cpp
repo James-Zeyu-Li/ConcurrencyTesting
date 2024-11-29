@@ -2,7 +2,6 @@
 #include <stdexcept>
 
 using namespace std;
-
 // constructor, check if the file exists, if not create a new file
 CSVFileHandler::CSVFileHandler(const string &path, LockType lockType)
     : filePath(path), lockType(lockType) {
