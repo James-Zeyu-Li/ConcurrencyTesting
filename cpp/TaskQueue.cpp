@@ -91,6 +91,7 @@ bool TaskQueue::dequeue(Task &t) {
     unlock(); // unlock the queue
     return true;
   }
+  return false;
 }
 
 // dequeue all tasks
