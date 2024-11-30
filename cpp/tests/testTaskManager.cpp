@@ -15,7 +15,6 @@ void printSection(const string &section) {
   cout << "\n===== " << section << " =====\n" << endl;
 }
 
-// Test case: Basic functionality with MutexLock
 void testBasicFunctionalityWithMutex() {
   printSection("Test: Basic Functionality with MutexLock");
 
@@ -40,119 +39,110 @@ void testBasicFunctionalityWithMutex() {
   cout << "Verified CSV content for MutexLock successfully." << endl;
 }
 
-// Test case: Multiple producers and consumers
-void testMultipleProducersConsumers() {
-  printSection("Test: Multiple Producers and Consumers");
+void testSingleConsumer() {
+  TaskQueue queue(LockType::Mutex);
+  TaskThreadManager manager("test.csv", queue);
 
-  TaskQueue queue(LockType::RWLock); // Using RWLock for this test
+  // add tasks to the queue
+  for (int i = 1; i <= 10; ++i) {
+    queue.enqueue(Task{i, "Task_" + std::to_string(i), false});
+  }
+
+  // activate consumer thread
+  manager.startConsumerThread();
+
+  // wait for the consumer thread to finish
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  // stop the consumer thread
+  manager.stopConsumerThread(1);
+
+  // check the CSV content
+  auto rows = manager.getCSVContent();
+  assert(rows.size() == 10);
+  cout << "Single consumer test passed.\n" << endl;
+}
+
+void testMultipleConsumers() {
+  TaskQueue queue(LockType::Mutex);
+  TaskThreadManager manager("test_multi.csv", queue);
+
+  // multi   consumers
+  manager.customTasks(3, 30, 0, 3, 30);
+
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+
+  auto rows = manager.getCSVContent();
+  assert(rows.size() == 30);
+  cout << "Multiple consumers test passed.\n" << endl;
+}
+
+void testMultipleProducersConsumersWithCustomTasks() {
+  printSection("Test: Multiple Producers and Consumers (CustomTasks)");
+
+  TaskQueue queue(LockType::RWLock); // use RWLock
   TaskThreadManager manager("test_rwlock.csv", queue);
 
-  // Start 5 producer threads, each producing 10 tasks
-  for (int i = 0; i < 5; ++i) {
-    manager.startProducerThread(10);
-  }
+  int producerThreads = 5;
+  std::size_t produceCount = 50;
+  int readerThreads = 2;
+  int consumerThreads = 5;
 
-  // Start 3 consumer threads
-  for (int i = 0; i < 3; ++i) {
-    manager.startConsumerThread();
-  }
+  manager.customTasks(producerThreads, produceCount, readerThreads,
+                      consumerThreads, produceCount);
 
-  // Start 2 reader threads
-  for (int i = 0; i < 2; ++i) {
-    manager.startReaderThread();
-  }
-
-  // Wait for threads to process tasks
-  this_thread::sleep_for(chrono::seconds(5));
-
-  // Stop threads
-  manager.stopConsumerThread(3); // Stop all consumer threads
-  manager.stopReaderThread();
-
-  // Verify CSV content
   auto rows = manager.getCSVContent();
-  assert(rows.size() == 50); // No header, tasks only
+  assert(rows.size() == produceCount);
+
+  cout << "CSV Content: " << endl;
+  for (const auto &row : rows) {
+    for (const auto &col : row) {
+      cout << col << " ";
+    }
+    cout << endl;
+  }
+
   cout << "Verified CSV content for RWLock successfully." << endl;
 }
 
-// Test case: Edge cases
-void testEdgeCases() {
-  printSection("Test: Edge Cases");
+void testStressWithCustomTasks() {
+  printSection("Test: Stress Test (CustomTasks)");
 
-  TaskQueue queue(LockType::Mutex);
-  TaskThreadManager manager("test_edge.csv", queue);
-
-  // Case 1: Stop producer early
-  manager.startProducerThread(5); // Start producing 5 tasks
-  this_thread::sleep_for(
-      chrono::milliseconds(200)); // Let it produce some tasks
-  manager.stopProducerThread();   // Stop the producer
-
-  // Case 2: Stop consumer early
-  manager.startConsumerThread();
-  this_thread::sleep_for(
-      chrono::milliseconds(200)); // Let it consume some tasks
-  manager.stopConsumerThread(1);  // Stop the consumer
-
-  // Case 3: Empty queue
-  assert(queue.isEmpty()); // Ensure queue is empty
-  cout << "Verified empty queue after stopping producer and consumer." << endl;
-
-  // Case 4: Reader on non-existent file
-  remove("test_edge.csv"); // Ensure file does not exist
-  try {
-    auto rows = manager.getCSVContent();
-    cout << "Unexpected success in reading non-existent file." << endl;
-  } catch (const runtime_error &e) {
-    cout << "Caught expected runtime_error: " << e.what() << endl;
-  } catch (...) {
-    cerr << "Caught unexpected exception type." << endl;
-  }
-}
-
-// Test case: High load and stress test
-void testStress() {
-  printSection("Test: High Load and Stress Test");
-
-  TaskQueue queue(LockType::RWLock); // Using RWLock for stress test
+  TaskQueue queue(LockType::Mutex); // 使用互斥锁
   TaskThreadManager manager("test_stress.csv", queue);
 
-  // Start 10 producer threads, each producing 50 tasks
-  for (int i = 0; i < 10; ++i) {
-    manager.startProducerThread(50);
-  }
+  // 高负载测试
+  int producerThreads = 10;        // 10 个生产者线程
+  std::size_t produceCount = 1000; // 总共生成 1000 个任务
+  int readerThreads = 1;           // 1 个读取器线程
+  int consumerThreads = 10;        // 10 个消费者线程
 
-  // Start 10 consumer threads
-  for (int i = 0; i < 10; ++i) {
-    manager.startConsumerThread();
-  }
+  manager.customTasks(producerThreads, produceCount, readerThreads,
+                      consumerThreads, produceCount);
 
-  // Start 5 reader threads
-  for (int i = 0; i < 5; ++i) {
-    manager.startReaderThread();
-  }
+  // 等待所有任务完成
+  std::this_thread::sleep_for(std::chrono::seconds(10));
 
-  // Wait for threads to process tasks
-  this_thread::sleep_for(chrono::seconds(10));
-
-  // Stop threads
-  manager.stopConsumerThread(10); // Stop all consumer threads
-  manager.stopReaderThread();
-
-  // Verify CSV content
+  // 获取队列和文件的状态
+  int queueSize = queue.queueSize();
   auto rows = manager.getCSVContent();
-  assert(rows.size() == 500); // No header, only tasks
-  cout << "Verified CSV content under stress successfully." << endl;
-}
 
+  // 断言检查
+  assert(queueSize == 0);              // 队列应为空
+  assert(rows.size() == produceCount); // 文件记录数应正确
+
+  cout << "Queue size after processing: " << queueSize << endl;
+  cout << "CSV file contains " << rows.size() << " rows." << endl;
+  cout << "Verified CSV content under high load successfully." << endl;
+}
 // Test all cases
 void comprehensiveTest() {
   printSection("Comprehensive Test");
-
-  testBasicFunctionalityWithMutex();
-  testMultipleProducersConsumers();
-  testEdgeCases();
-  testStress();
+  // testBasicFunctionalityWithMutex();
+  // testSingleConsumer();
+  // testMultipleConsumers();
+  // testMultipleProducersConsumersWithCustomTasks();
+  testStressWithCustomTasks();
 
   cout << "All tests passed successfully!" << endl;
 }

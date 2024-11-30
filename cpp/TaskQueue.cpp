@@ -40,6 +40,7 @@ TaskQueue::~TaskQueue() {
     delete rwLock;
     rwLock = nullptr;
   }
+  pthread_cond_destroy(&cond);
 }
 
 // lock the queue, based on the lock type
@@ -56,8 +57,6 @@ void TaskQueue::lock() {
     } else {
       throw std::runtime_error("RWLock is not initialized");
     }
-  } else if (lockType == LockType::NoLock) {
-    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -77,8 +76,6 @@ void TaskQueue::unlock() {
     } else {
       throw std::runtime_error("RWLock is not initialized");
     }
-  } else if (lockType == LockType::NoLock) {
-    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -92,13 +89,18 @@ void TaskQueue::enqueue(const Task &t) {
   std::cout << "[TaskQueue] Enqueued Task ID: " << t.id << ", Name: " << t.name
             << std::endl;
   // ----------------------------------------------------------------------
-  pthread_cond_signal(&cond); // signal the condition
   unlock();                   // unlock the queue
+  pthread_cond_signal(&cond); // signal the condition
 }
 
 // dequeue tasks
 bool TaskQueue::dequeue(Task &t) {
-  lock(); // lock the queue
+  unique_lock<mutex> lock(condMtx); // lock the condition mutex
+
+  // native_handle() returns the underlying native handle type
+  pthread_cond_wait(&cond, condMtx.native_handle()); // wait for the condition
+
+  this->lock(); // lock the queue
 
   if (lockType == LockType::NoLock) {
     if (tasksQueue.empty()) {
@@ -113,7 +115,7 @@ bool TaskQueue::dequeue(Task &t) {
       mutexLock->waitOnCondition(&cond); // wait for the condition
     } else if (lockType == LockType::RWLock && rwLock) {
       rwLock->writeLock(); // Ensure exclusive access for condition wait
-      mutexLock->waitOnCondition(&cond);
+      pthread_cond_wait(&cond, condMtx.native_handle());
       rwLock->writeUnlock();
     }
   }

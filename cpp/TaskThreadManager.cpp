@@ -26,6 +26,8 @@ TaskThreadManager::~TaskThreadManager() = default;
 // execute the task
 void TaskThreadManager::executeTask(const Task &task) {
   try {
+    cout << "[executeTask] Attempting to write Task ID: " << task.id << endl;
+
     // write a row to the CSV file as one execution is done
     csvHandler->writeRow({to_string(task.id), task.name,
                           task.isCompleted ? "Complete" : "Incomplete"});
@@ -41,7 +43,7 @@ void TaskThreadManager::executeTask(const Task &task) {
 std::atomic<int> TaskThreadManager::globalTaskCounter{1};
 
 // producer thread ------------------------------
-// Producer thread function
+// Producer thread function, 100ms sleep between each task
 void *TaskThreadManager::producerThread(void *arg) {
   auto *data = static_cast<ThreadData *>(arg);
   if (!data) {
@@ -114,18 +116,28 @@ void TaskThreadManager::stopProducerThread() {
 //----------------------------------------------
 
 // consumer thread ------------------------------
-// consumer thread function
+// consumer thread function, 100ms sleep between each task
 void *TaskThreadManager::consumerThread(void *arg) {
   TaskThreadManager *manager = static_cast<TaskThreadManager *>(arg);
 
-  while (!manager->stopConsumer) {
+  while (true) {
     Task t;
     if (manager->taskQueue->dequeue(t)) {
       if (t.id == -1) {
-        cout << "customer Received Termination Signal" << endl;
+        cout << "Consumer received termination signal." << endl;
         break;
       }
+      cout << "[consumerThread] Processing Task ID: " << t.id << endl;
       manager->executeTask(t);
+    } else {
+      // check if producer has stopped
+      if (manager->stopProducer && manager->taskQueue->isEmpty()) {
+        cout << "No more tasks and producer has stopped. Exiting consumer "
+                "thread."
+             << endl;
+        break;
+      }
+      this_thread::sleep_for(chrono::milliseconds(100));
     }
   }
   return nullptr;
@@ -151,23 +163,31 @@ void TaskThreadManager::stopConsumerThread(int consumerTaskCount) {
 // reader thread ------------------------------
 // reader thread function
 void *TaskThreadManager::readerThread(void *arg) {
-  TaskThreadManager *manager =
-      static_cast<TaskThreadManager *>(arg); // get the tasks object
+  TaskThreadManager *manager = static_cast<TaskThreadManager *>(arg);
 
-  while (!manager->stopReader.load()) {
+  while (!manager->stopReader) {
     try {
+      this_thread::sleep_for(chrono::milliseconds(500)); // Adjust timing
       auto rows = manager->csvHandler->readAll();
-      cout << "  Reader    CSV Content:" << endl;
+      cout << "Reader Thread CSV Content:" << endl;
       for (const auto &row : rows) {
         for (const auto &cell : row) {
           cout << cell << " ";
         }
         cout << endl;
       }
-    } catch (const ::exception &e) {
-      cerr << "  Reader    Error reading CSV: " << e.what() << endl;
+
+      // check if all tasks are read, then stop the reader
+      if (rows.size() >=
+          static_cast<std::size_t>(manager->taskQueue->queueSize())) {
+        cout << "  Reader   All tasks read from CSV" << endl;
+        manager->stopReader = true; // Stop the reader
+        break;
+      }
+
+    } catch (const exception &e) {
+      cerr << "Reader error: " << e.what() << endl;
     }
-    this_thread::sleep_for(chrono::seconds(5));
   }
 
   return nullptr;
@@ -192,34 +212,34 @@ void TaskThreadManager::customTasks(int producerThreads, int produceCount,
                                     int writeCount) {
   // average job per thread
   int tasksPerProducer = produceCount / producerThreads;
+  int remainingTasks = produceCount % producerThreads;
 
-  // start producer threads
   for (int i = 0; i < producerThreads; ++i) {
-    int startTaskId = i * tasksPerProducer + 1;
-    int endTaskId = min((i + 1) * tasksPerProducer, produceCount);
-    int numTasks = endTaskId - startTaskId + 1;
+    int numTasks = tasksPerProducer + (i < remainingTasks ? 1 : 0);
+    std::cout << "Producer thread " << i << " assigned " << numTasks
+              << " tasks.\n";
 
+    // task assignment to producer threads
     startProducerThread(numTasks);
   }
-
-  // start consumer threads
+  // activate consumer thread
   for (int i = 0; i < consumerThreads; ++i) {
     startConsumerThread();
   }
 
-  // start reader threads
+  // activate reader thread
   for (int i = 0; i < readerThreads; ++i) {
     startReaderThread();
   }
 
-  stopConsumerThread(consumerThreads); // stop consumer threads
-  // wait for some time to ensure all consumer threads are stopped
-  this_thread::sleep_for(::chrono::seconds(2));
+  // wait for the producer threads to finish
+  this_thread::sleep_for(chrono::seconds(8));
 
-  // stopReaderThread
+  // if the test is successful, stop the consumer and reader threads
+  stopConsumerThread(consumerThreads);
+
   stopReaderThread();
-  // wait for some time to ensure all reader threads are stopped
-  this_thread::sleep_for(::chrono::seconds(2));
+  this_thread::sleep_for(chrono::seconds(2));
 
   // Verify CSV content, check if all tasks are written
   try {

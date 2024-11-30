@@ -66,48 +66,46 @@ void CSVHandler::unlock(LockType lockType, LockOperation operation) {
 }
 
 // write a row from CSV file, file open in append mode
-void CSVHandler::writeRow(const vector<string> &row) {
+void CSVHandler::writeRow(const std::vector<std::string> &row) {
   lock(lockType, LockOperation::Write);
   try {
-    if (!fileStream.is_open()) {
-      fileStream.open(filePath, ios::out | ios::app); // open the file in append
-      if (!fileStream.is_open()) {
-        throw runtime_error("Cannot open file: " + filePath);
-      }
+    // use a local stream to write the file
+    std::ofstream localStream(filePath, std::ios::out | std::ios::app);
+    if (!localStream.is_open()) {
+      unlock(lockType, LockOperation::Write);
+      throw std::runtime_error("Cannot open file: " + filePath);
     }
 
-    for (size_t i = 0; i < row.size(); i++) {
-      fileStream << row[i];
+    for (size_t i = 0; i < row.size(); ++i) {
+      localStream << row[i];
       if (i != row.size() - 1) {
-        fileStream << ",";
+        localStream << ",";
       }
     }
-    fileStream << endl;
+    localStream << std::endl;
 
-    // check if the write operation is successful
-    if (fileStream.fail()) {
-      throw runtime_error("File write operation failed: " + filePath);
+    if (localStream.fail()) {
+      throw std::runtime_error("File write operation failed: " + filePath);
     }
 
-    // print the row written successfully
-    cout << "Row written successfully: ";
+    // print for  confirmation
+    std::cout << "Row written successfully: ";
     for (const auto &col : row) {
-      cout << col << " ";
+      std::cout << col << " ";
     }
-    cout << endl;
+    std::cout << std::endl;
 
   } catch (const std::exception &e) {
-    cerr << "Error writing row to file: " << e.what() << endl;
-    unlock(lockType, LockOperation::Write); // unlock the file
+    std::cerr << "Error writing row to file: " << e.what() << std::endl;
+    unlock(lockType, LockOperation::Write); // make sure to unlock
     throw;
   } catch (...) {
-    cerr << "Unknown error occurred during write operation." << endl;
-    unlock(lockType, LockOperation::Write);
+    std::cerr << "Unknown error occurred during write operation." << std::endl;
+    unlock(lockType, LockOperation::Write); // make sure to unlock
     throw;
   }
 
-  // 解锁，确保其他线程可访问
-  unlock(lockType, LockOperation::Write);
+  unlock(lockType, LockOperation::Write); // unlock after successful operation
 }
 
 // read all from CSV file, file open in read mode

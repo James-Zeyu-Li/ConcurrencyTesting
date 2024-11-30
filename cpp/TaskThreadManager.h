@@ -20,7 +20,6 @@ private:
   TaskQueue *taskQueue;
   ThreadManager threadManager;
 
-  // stop flags for threads
   std::atomic<bool> stopProducer;
   std::atomic<bool> stopConsumer;
   std::atomic<bool> stopReader;

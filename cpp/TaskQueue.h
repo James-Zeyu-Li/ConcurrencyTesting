@@ -20,7 +20,9 @@ private:
   LockType lockType; // type of lock, mutex or rwlock
   MutexLock *mutexLock;
   RWLock *rwLock;
+  
   pthread_cond_t cond; // provide wait and signal functionality
+  std::mutex condMtx;      // mutex for condition variable, for thread safety
 
   void lock();   // lock the queue, based on the lock type
   void unlock(); // unlock the queue, based on the lock type
