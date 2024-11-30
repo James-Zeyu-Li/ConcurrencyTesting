@@ -11,35 +11,53 @@ TaskQueue::TaskQueue(LockType type, void *lock)
     rwLock = static_cast<RWLock *>(lock);
   } else if (type == LockType::Mutex) {
     mutexLock = new MutexLock();
+    if (!mutexLock) {
+      throw std::runtime_error("Failed to allocate MutexLock");
+    }
   } else if (type == LockType::RWLock) {
     rwLock = new RWLock();
+    if (!rwLock) {
+      throw std::runtime_error("Failed to allocate RWLock");
+    }
   } else if (type == LockType::NoLock) {
-    // no lock will be used
+    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
-  pthread_cond_init(&cond, nullptr);
+
+  if (pthread_cond_init(&cond, nullptr) != 0) {
+    throw std::runtime_error("Failed to initialize condition variable");
+  }
 }
 
 // Destructor
 TaskQueue::~TaskQueue() {
   if (mutexLock != nullptr) {
     delete mutexLock;
+    mutexLock = nullptr;
   }
-
   if (rwLock != nullptr) {
     delete rwLock;
+    rwLock = nullptr;
   }
 }
 
 // lock the queue, based on the lock type
 void TaskQueue::lock() {
   if (lockType == LockType::Mutex) {
-    mutexLock->mutexLockOn();
+    if (mutexLock) {
+      mutexLock->mutexLockOn();
+    } else {
+      throw std::runtime_error("MutexLock is not initialized");
+    }
   } else if (lockType == LockType::RWLock) {
-    rwLock->writeLock();
+    if (rwLock) {
+      rwLock->writeLock();
+    } else {
+      throw std::runtime_error("RWLock is not initialized");
+    }
   } else if (lockType == LockType::NoLock) {
-    // no lock will be used
+    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -48,11 +66,19 @@ void TaskQueue::lock() {
 // unlock the queue, based on the lock type
 void TaskQueue::unlock() {
   if (lockType == LockType::Mutex) {
-    mutexLock->mutexUnlock();
+    if (mutexLock) {
+      mutexLock->mutexUnlock();
+    } else {
+      throw std::runtime_error("MutexLock is not initialized");
+    }
   } else if (lockType == LockType::RWLock) {
-    rwLock->writeUnlock();
+    if (rwLock) {
+      rwLock->writeUnlock();
+    } else {
+      throw std::runtime_error("RWLock is not initialized");
+    }
   } else if (lockType == LockType::NoLock) {
-    // no lock will be used
+    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }

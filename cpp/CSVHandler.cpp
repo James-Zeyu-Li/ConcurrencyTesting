@@ -2,8 +2,9 @@
 #include <stdexcept>
 
 using namespace std;
-// constructor, check if the file exists, if not create a new file
-CSVFileHandler::CSVFileHandler(const string &path, LockType lockType)
+// test this is being send to Git
+//  constructor, check if the file exists, if not create a new file
+CSVHandler::CSVHandler(const string &path, LockType lockType)
     : filePath(path), lockType(lockType) {
   // check if the file exists
   if (!fileStream.is_open()) {
@@ -24,14 +25,14 @@ CSVFileHandler::CSVFileHandler(const string &path, LockType lockType)
 }
 
 // destructor, close the file stream
-CSVFileHandler::~CSVFileHandler() {
+CSVHandler::~CSVHandler() {
   if (fileStream.is_open()) {
     fileStream.close();
   }
 }
 
 // lock the file according to the lock type
-void CSVFileHandler::lock(LockType lockType, LockOperation operation) {
+void CSVHandler::lock(LockType lockType, LockOperation operation) {
   if (lockType == LockType::Mutex) {
     fileMutex.mutexLockOn();
   } else if (lockType == LockType::RWLock) {
@@ -48,7 +49,7 @@ void CSVFileHandler::lock(LockType lockType, LockOperation operation) {
 }
 
 // unlock the file according to the lock type
-void CSVFileHandler::unlock(LockType lockType, LockOperation operation) {
+void CSVHandler::unlock(LockType lockType, LockOperation operation) {
   if (lockType == LockType::Mutex) {
     fileMutex.mutexUnlock();
   } else if (lockType == LockType::RWLock) {
@@ -65,7 +66,7 @@ void CSVFileHandler::unlock(LockType lockType, LockOperation operation) {
 }
 
 // write a row from CSV file, file open in append mode
-void CSVFileHandler::writeRow(const vector<string> &row) {
+void CSVHandler::writeRow(const vector<string> &row) {
   lock(lockType, LockOperation::Write);
   try {
     if (!fileStream.is_open()) {
@@ -83,12 +84,12 @@ void CSVFileHandler::writeRow(const vector<string> &row) {
     }
     fileStream << endl;
 
-    // 检查写入状态是否正常
+    // check if the write operation is successful
     if (fileStream.fail()) {
       throw runtime_error("File write operation failed: " + filePath);
     }
 
-    // 输出调试信息
+    // print the row written successfully
     cout << "Row written successfully: ";
     for (const auto &col : row) {
       cout << col << " ";
@@ -97,11 +98,11 @@ void CSVFileHandler::writeRow(const vector<string> &row) {
 
   } catch (const std::exception &e) {
     cerr << "Error writing row to file: " << e.what() << endl;
-    unlock(lockType, LockOperation::Write); // 确保解锁
-    throw;                                  // 重新抛出异常
+    unlock(lockType, LockOperation::Write); // unlock the file
+    throw;
   } catch (...) {
     cerr << "Unknown error occurred during write operation." << endl;
-    unlock(lockType, LockOperation::Write); // 确保解锁
+    unlock(lockType, LockOperation::Write);
     throw;
   }
 
@@ -110,7 +111,7 @@ void CSVFileHandler::writeRow(const vector<string> &row) {
 }
 
 // read all from CSV file, file open in read mode
-vector<vector<string>> CSVFileHandler::readAll() {
+vector<vector<string>> CSVHandler::readAll() {
   // lock the file, enum LockOperation::Read
   lock(lockType, LockOperation::Read);
   vector<vector<string>> data;
@@ -154,7 +155,7 @@ vector<vector<string>> CSVFileHandler::readAll() {
 }
 
 // Clear the CSV file
-void CSVFileHandler::clear() {
+void CSVHandler::clear() {
   // Apply write lock
   lock(lockType, LockOperation::Write);
 
@@ -191,7 +192,7 @@ void CSVFileHandler::clear() {
 }
 
 // reset the file pointer
-void CSVFileHandler::resetStream() {
+void CSVHandler::resetStream() {
   lock(lockType, LockOperation::Read);
   try {
     if (!fileStream.is_open()) {
@@ -212,7 +213,7 @@ void CSVFileHandler::resetStream() {
 }
 
 // close the stream
-void CSVFileHandler::closeStream() {
+void CSVHandler::closeStream() {
   if (fileStream.is_open()) {
     fileStream.close();
     cout << "File stream closed successfully." << endl;

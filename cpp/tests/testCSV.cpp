@@ -5,18 +5,22 @@
 #include <thread>
 #include <vector>
 
+// Forward declaration of the function
+void testCSVHandlerWithLockTypeOnSameFile(LockType lockType,
+                                          const std::string &lockName);
+
 // Print separator for better test output
 void printSeparator(const std::string &testName) {
   std::cout << "\n===== " << testName << " =====\n" << std::endl;
 }
 
-// Test CSVFileHandler with a specific LockType on the same file
-void testCSVFileHandlerWithLockTypeOnSameFile(LockType lockType,
-                                              const std::string &lockName) {
-  printSeparator("Test CSVFileHandler with LockType: " + lockName);
+// Test CSVHandler with a specific LockType on the same file
+void testCSVHandlerWithLockTypeOnSameFile(LockType lockType,
+                                          const std::string &lockName) {
+  printSeparator("Test CSVHandler with LockType: " + lockName);
 
   const std::string testFilePath = "test_shared.csv";
-  CSVFileHandler csvHandler(testFilePath, lockType);
+  CSVHandler csvHandler(testFilePath, lockType);
 
   // Step 1: Clear the file to start with a clean slate
   std::cout << "[Test-" << lockName << "] Clearing file..." << std::endl;
@@ -77,8 +81,8 @@ void testCSVFileHandlerWithLockTypeOnSameFile(LockType lockType,
             << "] File cleared and verified successfully." << std::endl;
 }
 
-// Comprehensive test for CSVFileHandler with edge cases
-void testCSVFileHandler() {
+// Comprehensive test for CSVHandler with edge cases
+void testCSVHandler() {
   const std::string testFilePath = "test_shared.csv";
 
   // Ensure a clean file to start
@@ -86,25 +90,26 @@ void testCSVFileHandler() {
   clearFile.close();
 
   // Test with Mutex lock
-  testCSVFileHandlerWithLockTypeOnSameFile(LockType::Mutex, "Mutex");
+  testCSVHandlerWithLockTypeOnSameFile(LockType::Mutex, "Mutex");
 
   // Test with RWLock (reader-writer lock)
-  testCSVFileHandlerWithLockTypeOnSameFile(LockType::RWLock, "RWLock");
+  testCSVHandlerWithLockTypeOnSameFile(LockType::RWLock, "RWLock");
 
   // Test with NoLock (no locking mechanism)
-  testCSVFileHandlerWithLockTypeOnSameFile(LockType::NoLock, "NoLock");
+  testCSVHandlerWithLockTypeOnSameFile(LockType::NoLock, "NoLock");
 }
 
 int main() {
   try {
-    testCSVFileHandler();
-    std::cout << "\n[Main] All CSVFileHandler tests passed!" << std::endl;
+    testCSVHandler();
+    std::cout << "\n[Main] All CSVHandler tests passed!" << std::endl;
   } catch (const std::exception &e) {
     std::cerr << "[Main] Test failed: " << e.what() << std::endl;
     return 1;
   }
   return 0;
 }
+
 // g++ -std=c++17 -Wall -Wextra -o testCSV \
 //     ../CSVHandler.cpp \
 //     ../util/LockImpl/MutexLock.cpp \

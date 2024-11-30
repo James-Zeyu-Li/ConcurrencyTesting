@@ -1,6 +1,6 @@
-// CSVFileHandler.h
-#ifndef CSVFILEHANDLER_H
-#define CSVFILEHANDLER_H
+// csvHandler.h
+#ifndef CSVHANDLER_H
+#define CSVHANDLER_H
 
 #include "util/LockType.h"
 #include "util/MutexLock.h"
@@ -14,7 +14,7 @@
 
 enum class LockOperation { Read, Write };
 
-class CSVFileHandler {
+class CSVHandler {
 private:
   std::string filePath;
   std::fstream fileStream;
@@ -26,8 +26,8 @@ private:
   void unlock(LockType lockType, LockOperation operation);
 
 public:
-  CSVFileHandler(const std::string &path, LockType lockType = LockType::Mutex);
-  ~CSVFileHandler();
+  CSVHandler(const std::string &path, LockType lockType = LockType::Mutex);
+  ~CSVHandler();
 
   // write a row to CSV file
   void writeRow(const std::vector<std::string> &row);
@@ -45,4 +45,4 @@ public:
   void closeStream();
 };
 
-#endif // CSVFILEHANDLER_H
+#endif // CSVHANDLER_H

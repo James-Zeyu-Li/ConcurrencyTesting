@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "C++ Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/your_program", // 替换为你的可执行文件路径
+            "args": [], // 传递给程序的参数
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false, // 使用 VS Code 内置的 Debug Console
+            "MIMode": "gdb", // 或 "lldb"，取决于你的选择
+            "miDebuggerPath": "/usr/bin/gdb", // 替换为 gdb 或 lldb 的路径
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
