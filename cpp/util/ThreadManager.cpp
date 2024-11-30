@@ -13,12 +13,24 @@ ThreadManager::~ThreadManager() {
 //------------------Thread management------------------
 void ThreadManager::createThread(void *(*startRoutine)(void *), void *arg,
                                  pthread_t *thread) {
-  int ret = pthread_create(thread, nullptr, startRoutine, arg);
-  if (ret != 0) {
+  if (arg != nullptr) {
+    int *data = static_cast<int *>(arg);
+    if (*data < 0) {
+      throw std::invalid_argument(
+          "Invalid data for thread: negative value detected!");
+    }
+  }
+
+  pthread_t localThread;
+  pthread_t *threadPtr = thread ? thread : &localThread;
+
+  int result = pthread_create(threadPtr, nullptr, startRoutine, arg);
+  if (result != 0) {
     throw std::runtime_error("Failed to create thread");
   }
-  threadList.push_back(*thread);     // add the thread to the list
-  threadStatus[*thread] = "running"; // set the status of the thread
+
+  threadList.push_back(*threadPtr);
+  threadStatus[*threadPtr] = "Running";
 }
 
 // join thread, wait for the thread to finish
