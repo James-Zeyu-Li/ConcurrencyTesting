@@ -112,6 +112,6 @@ int main() {
 
 // g++ -std=c++17 -Wall -Wextra -o testCSV \
 //     ../CSVHandler.cpp \
-//     ../util/LockImpl/MutexLock.cpp \
-//     ../util/LockImpl/RWLock.cpp \
+//     ../util/MutexLock.cpp \
+//     ../util/RWLock.cpp \
 //     testCSV.cpp
