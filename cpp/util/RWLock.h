@@ -4,10 +4,12 @@
 #include <pthread.h>
 
 class RWLock {
- private:
+private:
   pthread_rwlock_t rwlock;
+  int readContentionCount;  // record read lock contention count
+  int writeContentionCount; // record write lock contention count
 
- public:
+public:
   RWLock();
   ~RWLock();
 
@@ -15,6 +17,9 @@ class RWLock {
   void writeLock();
   void readUnlock();
   void writeUnlock();
+
+  int getReadContentionCount() const;
+  int getWriteContentionCount() const;
 };
 
-#endif  // RWLOCK_H
+#endif // RWLOCK_H

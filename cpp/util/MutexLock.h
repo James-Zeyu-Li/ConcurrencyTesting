@@ -4,16 +4,20 @@
 #include <pthread.h>
 
 class MutexLock {
- private:
+private:
   pthread_mutex_t mutex;
+  int mutexContentionCount; // record mutex lock contention count
 
- public:
+public:
   MutexLock();
-  void mutexLockOn();
-  void mutexUnlock();
   ~MutexLock();
 
-  void waitOnCondition(pthread_cond_t *cond);
+  void mutexLockOn();
+  void mutexUnlock();
+
+  void waitOnCondition(pthread_cond_t *cond); // wait on condition variable
+
+  int getContentionCount() const; // get the contention count
 };
 
-#endif  // MUTEXLOCK_H
+#endif // MUTEXLOCK_H
