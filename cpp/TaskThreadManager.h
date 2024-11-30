@@ -16,7 +16,7 @@ private:
     int taskCount; // number of tasks to produce
   };
 
-  CSVFileHandler *csvFileHandler;
+  std::unique_ptr<CSVHandler> csvHandler;
   TaskQueue *taskQueue;
   ThreadManager threadManager;
 
@@ -31,6 +31,7 @@ private:
   static void *readerThread(void *arg);
 
   void executeTask(const Task &task);
+  static std::atomic<int> globalTaskCounter;
 
 public:
   TaskThreadManager(const std::string &filePath, TaskQueue &queue);
@@ -47,6 +48,10 @@ public:
 
   void customTasks(int producerThreads, int produceCount, int readerThreads,
                    int consumerThreads, int writeCount);
+
+public:
+  // get the CSV content, for testing purposes
+  std::vector<std::vector<std::string>> getCSVContent();
 };
 
 #endif // TASKTHREADMANAGER_H

@@ -34,12 +34,12 @@ void ThreadManager::createThread(void *(*startRoutine)(void *), void *arg,
 }
 
 // join thread, wait for the thread to finish
-void ThreadManager::joinThread(pthread_t thread) {
-  if (pthread_join(thread, nullptr) == 0) {
+void ThreadManager::joinAllThreads() {
+  for (auto &thread : threadList) {
+    pthread_join(thread, nullptr);
     threadStatus[thread] = "Finished";
-  } else {
-    throw std::runtime_error("Failed to join thread");
   }
+  threadList.clear();
 }
 
 // exit thread

@@ -1,22 +1,34 @@
 #include "TaskThreadManager.h"
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <thread>
 
 using namespace std;
 
-TaskThreadManager::TaskThreadManager(const ::string &filePath, TaskQueue &queue)
-    : csvFileHandler(new CSVFileHandler(filePath)), taskQueue(&queue),
-      stopProducer(false), stopConsumer(false), stopReader(false) {}
+TaskThreadManager::TaskThreadManager(const string &filePath, TaskQueue &queue)
+    : csvHandler(make_unique<CSVHandler>(filePath, LockType::Mutex)),
+      taskQueue(&queue), stopProducer(false), stopConsumer(false),
+      stopReader(false) {}
 
-TaskThreadManager::~TaskThreadManager() { delete csvFileHandler; }
+// get the CSV content, for testing purposes, read all rows
+vector<vector<string>> TaskThreadManager::getCSVContent() {
+  try {
+    return csvHandler->readAll();
+  } catch (const exception &e) {
+    cerr << "Error reading CSV content: " << e.what() << endl;
+    throw;
+  }
+} //----------------------------------------------
+
+TaskThreadManager::~TaskThreadManager() = default;
 
 // execute the task
 void TaskThreadManager::executeTask(const Task &task) {
   try {
     // write a row to the CSV file as one execution is done
-    csvFileHandler->writeRow({to_string(task.id), task.name,
-                              task.isCompleted ? "Complete" : "Incomplete"});
+    csvHandler->writeRow({to_string(task.id), task.name,
+                          task.isCompleted ? "Complete" : "Incomplete"});
     cout << "Executed Task ID: " << task.id << ::endl;
   } catch (const ::exception &e) {
     cerr << " Error writing to CSV: " << e.what() << ::endl;
@@ -25,33 +37,73 @@ void TaskThreadManager::executeTask(const Task &task) {
   cout << "Executing task: " << task.id << " " << task.name << ::endl;
 }
 
+// Initiate Global Counter
+std::atomic<int> TaskThreadManager::globalTaskCounter{1};
+
 // producer thread ------------------------------
 // Producer thread function
 void *TaskThreadManager::producerThread(void *arg) {
-  auto *data = static_cast<::pair<TaskThreadManager *, int> *>(arg);
-  TaskThreadManager *tasks = data->first; // get the tasks object
-  int numTasks = data->second;            // get the number of tasks
+  auto *data = static_cast<ThreadData *>(arg);
+  if (!data) {
+    std::cerr << "Error: ThreadData is null in producerThread." << std::endl;
+    return nullptr;
+  }
 
-  for (int i = 1; i <= numTasks; ++i) {
-    if (tasks->stopProducer) {
+  TaskThreadManager *manager = data->manager;
+  if (!manager) {
+    std::cerr << "Error: TaskThreadManager is null in producerThread."
+              << std::endl;
+    delete data;
+    return nullptr;
+  }
+
+  int taskCount = data->taskCount;
+  std::cout << "Producer thread started. Task count: " << taskCount
+            << std::endl;
+
+  for (int i = 1; i <= taskCount; ++i) {
+    if (manager->stopProducer) {
+      std::cout << "Producer thread stopping due to stopProducer flag."
+                << std::endl;
       break;
     }
 
-    Task t = {i, "Task_" + to_string(i), false};
-    tasks->taskQueue->enqueue(t);
-    cout << " Enqueued Task ID: " << t.id << endl;
-    this_thread::sleep_for(
-        chrono::milliseconds(50)); // delay for 50 milliseconds
+    int taskID = globalTaskCounter.fetch_add(1);
+    Task task{taskID, "Task_" + std::to_string(taskID), false};
+
+    try {
+      manager->taskQueue->enqueue(task);
+    } catch (const std::exception &e) {
+      std::cerr << "Error in enqueue: " << e.what() << std::endl;
+      break;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+
+  std::cout << "Producer thread finished." << std::endl;
   delete data;
   return nullptr;
 }
 
 // start the producer thread
 void TaskThreadManager::startProducerThread(int numTasks) {
-  stopProducer = false; // create task and numTasks
-  ThreadData *data = new ThreadData{this, numTasks};
-  threadManager.createThread(&TaskThreadManager::producerThread, data, nullptr);
+  if (numTasks <= 0) {
+    throw std::invalid_argument("Number of tasks must be positive.");
+  }
+
+  stopProducer = false;
+  auto *data = new ThreadData{this, numTasks};
+  pthread_t threadHandle;
+
+  try {
+    threadManager.createThread(&TaskThreadManager::producerThread, data,
+                               &threadHandle);
+  } catch (const std::exception &e) {
+    std::cerr << "Error starting producer thread: " << e.what() << std::endl;
+    delete data; // delete the data
+    throw;
+  }
 }
 
 // stop the producer thread
@@ -68,14 +120,12 @@ void *TaskThreadManager::consumerThread(void *arg) {
 
   while (!manager->stopConsumer) {
     Task t;
-    if (manager->taskQueue->isEmpty()) {
+    if (manager->taskQueue->dequeue(t)) {
       if (t.id == -1) {
         cout << "customer Received Termination Signal" << endl;
         break;
       }
-      if (manager->taskQueue->dequeue(t)) {
-        manager->executeTask(t);
-      }
+      manager->executeTask(t);
     }
   }
   return nullptr;
@@ -106,7 +156,7 @@ void *TaskThreadManager::readerThread(void *arg) {
 
   while (!manager->stopReader.load()) {
     try {
-      auto rows = manager->csvFileHandler->readAll();
+      auto rows = manager->csvHandler->readAll();
       cout << "  Reader    CSV Content:" << endl;
       for (const auto &row : rows) {
         for (const auto &cell : row) {
@@ -173,7 +223,7 @@ void TaskThreadManager::customTasks(int producerThreads, int produceCount,
 
   // Verify CSV content, check if all tasks are written
   try {
-    auto rows = csvFileHandler->readAll();
+    auto rows = csvHandler->readAll();
     if (rows.size() >= static_cast<size_t>(writeCount)) {
       cout << " All tasks written successfully to CSV!" << endl;
     } else {

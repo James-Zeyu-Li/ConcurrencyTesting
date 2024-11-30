@@ -17,8 +17,7 @@ public:
 
   void createThread(void *(*startRoutine)(void *), void *arg,
                     pthread_t *thread);
-  void joinThread(
-      pthread_t thread); // Join the thread, wait for the thread to finish
+  void joinAllThreads(); // Join the thread, wait for the thread to finish
 
   void exitThread(); // Exit the thread
 
