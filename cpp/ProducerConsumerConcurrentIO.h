@@ -1,5 +1,5 @@
-#ifndef TASKTHREADMANAGER_H
-#define TASKTHREADMANAGER_H
+#ifndef PRODUCERCONSUMERCONCURRENTIO_H
+#define PRODUCERCONSUMERCONCURRENTIO_H
 
 #include "CSVHandler.h"
 #include "TaskQueue.h"
@@ -8,11 +8,11 @@
 #include <iostream>
 #include <string>
 
-class TaskThreadManager {
+class ProducerConsumerConcurrentIO {
 
 private:
   struct ThreadData {
-    TaskThreadManager *manager;
+    ProducerConsumerConcurrentIO *manager;
     int taskCount; // number of tasks to produce
   };
 
@@ -33,8 +33,8 @@ private:
   static std::atomic<int> globalTaskCounter;
 
 public:
-  TaskThreadManager(const std::string &filePath, TaskQueue &queue);
-  ~TaskThreadManager();
+  ProducerConsumerConcurrentIO(const std::string &filePath, TaskQueue &queue);
+  ~ProducerConsumerConcurrentIO();
 
   void startProducerThread(int numTasks);
   void stopProducerThread();
@@ -53,4 +53,4 @@ public:
   std::vector<std::vector<std::string>> getCSVContent();
 };
 
-#endif // TASKTHREADMANAGER_H
+#endif // PRODUCERCONSUMERCONCURRENTIO_H

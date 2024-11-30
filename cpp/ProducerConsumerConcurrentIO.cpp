@@ -1,4 +1,4 @@
-#include "TaskThreadManager.h"
+#include "ProducerConsumerConcurrentIO.h"
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -6,13 +6,13 @@
 
 using namespace std;
 
-TaskThreadManager::TaskThreadManager(const string &filePath, TaskQueue &queue)
+ProducerConsumerConcurrentIO::ProducerConsumerConcurrentIO(const string &filePath, TaskQueue &queue)
     : csvHandler(make_unique<CSVHandler>(filePath, LockType::Mutex)),
       taskQueue(&queue), stopProducer(false), stopConsumer(false),
       stopReader(false) {}
 
 // get the CSV content, for testing purposes, read all rows
-vector<vector<string>> TaskThreadManager::getCSVContent() {
+vector<vector<string>> ProducerConsumerConcurrentIO::getCSVContent() {
   try {
     return csvHandler->readAll();
   } catch (const exception &e) {
@@ -21,10 +21,10 @@ vector<vector<string>> TaskThreadManager::getCSVContent() {
   }
 } //----------------------------------------------
 
-TaskThreadManager::~TaskThreadManager() = default;
+ProducerConsumerConcurrentIO::~ProducerConsumerConcurrentIO() = default;
 
 // execute the task
-void TaskThreadManager::executeTask(const Task &task) {
+void ProducerConsumerConcurrentIO::executeTask(const Task &task) {
   try {
     cout << "[executeTask] Attempting to write Task ID: " << task.id << endl;
 
@@ -40,20 +40,20 @@ void TaskThreadManager::executeTask(const Task &task) {
 }
 
 // Initiate Global Counter
-std::atomic<int> TaskThreadManager::globalTaskCounter{1};
+std::atomic<int> ProducerConsumerConcurrentIO::globalTaskCounter{1};
 
 // producer thread ------------------------------
 // Producer thread function, 100ms sleep between each task
-void *TaskThreadManager::producerThread(void *arg) {
+void *ProducerConsumerConcurrentIO::producerThread(void *arg) {
   auto *data = static_cast<ThreadData *>(arg);
   if (!data) {
     std::cerr << "Error: ThreadData is null in producerThread." << std::endl;
     return nullptr;
   }
 
-  TaskThreadManager *manager = data->manager;
+  ProducerConsumerConcurrentIO *manager = data->manager;
   if (!manager) {
-    std::cerr << "Error: TaskThreadManager is null in producerThread."
+    std::cerr << "Error: ProducerConsumerConcurrentIO is null in producerThread."
               << std::endl;
     delete data;
     return nullptr;
@@ -89,7 +89,7 @@ void *TaskThreadManager::producerThread(void *arg) {
 }
 
 // start the producer thread
-void TaskThreadManager::startProducerThread(int numTasks) {
+void ProducerConsumerConcurrentIO::startProducerThread(int numTasks) {
   if (numTasks <= 0) {
     throw std::invalid_argument("Number of tasks must be positive.");
   }
@@ -99,7 +99,7 @@ void TaskThreadManager::startProducerThread(int numTasks) {
   pthread_t threadHandle;
 
   try {
-    threadManager.createThread(&TaskThreadManager::producerThread, data,
+    threadManager.createThread(&ProducerConsumerConcurrentIO::producerThread, data,
                                &threadHandle);
   } catch (const std::exception &e) {
     std::cerr << "Error starting producer thread: " << e.what() << std::endl;
@@ -109,7 +109,7 @@ void TaskThreadManager::startProducerThread(int numTasks) {
 }
 
 // stop the producer thread
-void TaskThreadManager::stopProducerThread() {
+void ProducerConsumerConcurrentIO::stopProducerThread() {
   stopProducer = true;
   threadManager.exitThread();
 }
@@ -117,8 +117,8 @@ void TaskThreadManager::stopProducerThread() {
 
 // consumer thread ------------------------------
 // consumer thread function, 100ms sleep between each task
-void *TaskThreadManager::consumerThread(void *arg) {
-  TaskThreadManager *manager = static_cast<TaskThreadManager *>(arg);
+void *ProducerConsumerConcurrentIO::consumerThread(void *arg) {
+  ProducerConsumerConcurrentIO *manager = static_cast<ProducerConsumerConcurrentIO *>(arg);
 
   while (true) {
     Task t;
@@ -144,13 +144,13 @@ void *TaskThreadManager::consumerThread(void *arg) {
 }
 
 // start the consumer thread
-void TaskThreadManager::startConsumerThread() {
+void ProducerConsumerConcurrentIO::startConsumerThread() {
   stopConsumer = false;
-  threadManager.createThread(&TaskThreadManager::consumerThread, this, nullptr);
+  threadManager.createThread(&ProducerConsumerConcurrentIO::consumerThread, this, nullptr);
 }
 
 // stop the consumer thread
-void TaskThreadManager::stopConsumerThread(int consumerTaskCount) {
+void ProducerConsumerConcurrentIO::stopConsumerThread(int consumerTaskCount) {
   stopConsumer = true;
   for (int i = 0; i < consumerTaskCount; ++i) {
     Task endTask = {-1, "Exit", false}; // create a task with id -1
@@ -162,8 +162,8 @@ void TaskThreadManager::stopConsumerThread(int consumerTaskCount) {
 
 // reader thread ------------------------------
 // reader thread function
-void *TaskThreadManager::readerThread(void *arg) {
-  TaskThreadManager *manager = static_cast<TaskThreadManager *>(arg);
+void *ProducerConsumerConcurrentIO::readerThread(void *arg) {
+  ProducerConsumerConcurrentIO *manager = static_cast<ProducerConsumerConcurrentIO *>(arg);
 
   while (!manager->stopReader) {
     try {
@@ -194,20 +194,20 @@ void *TaskThreadManager::readerThread(void *arg) {
 }
 
 // start the reader thread
-void TaskThreadManager::startReaderThread() {
+void ProducerConsumerConcurrentIO::startReaderThread() {
   stopReader = false;
-  threadManager.createThread(&TaskThreadManager::readerThread, this, nullptr);
+  threadManager.createThread(&ProducerConsumerConcurrentIO::readerThread, this, nullptr);
 }
 
 // stop the reader thread
-void TaskThreadManager::stopReaderThread() {
+void ProducerConsumerConcurrentIO::stopReaderThread() {
   stopReader = true;
   cout << "  Reader   Stopping Reader Thread" << endl;
 }
 //----------------------------------------------
 
 // custom tasks
-void TaskThreadManager::customTasks(int producerThreads, int produceCount,
+void ProducerConsumerConcurrentIO::customTasks(int producerThreads, int produceCount,
                                     int readerThreads, int consumerThreads,
                                     int writeCount) {
   // average job per thread
