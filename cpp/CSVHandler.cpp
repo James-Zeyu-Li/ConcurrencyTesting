@@ -41,8 +41,6 @@ void CSVHandler::lock(LockType lockType, LockOperation operation) {
     } else {
       fileRWLock.readLock();
     }
-  } else if (lockType == LockType::NoLock) {
-    // no lock used
   } else {
     throw runtime_error("Invalid lock type");
   }
@@ -58,8 +56,6 @@ void CSVHandler::unlock(LockType lockType, LockOperation operation) {
     } else {
       fileRWLock.readUnlock();
     }
-  } else if (lockType == LockType::NoLock) {
-    // no lock used
   } else {
     throw runtime_error("Invalid lock type");
   }

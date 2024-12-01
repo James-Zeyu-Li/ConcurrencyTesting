@@ -4,7 +4,8 @@ using namespace std;
 
 // Constructor, initialize the lock type and lock pointer
 TaskQueue::TaskQueue(LockType type, void *lock)
-    : lockType(type), mutexLock(nullptr), rwLock(nullptr) {
+    : lockType(type), mutexLock(nullptr), rwLock(nullptr),
+      isExternalLock(lock != nullptr) {
   if (type == LockType::Mutex && lock != nullptr) {
     mutexLock = static_cast<MutexLock *>(lock);
   } else if (type == LockType::RWLock && lock != nullptr) {
@@ -19,8 +20,6 @@ TaskQueue::TaskQueue(LockType type, void *lock)
     if (!rwLock) {
       throw std::runtime_error("Failed to allocate RWLock");
     }
-  } else if (type == LockType::NoLock) {
-    // No lock will be used
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -28,35 +27,34 @@ TaskQueue::TaskQueue(LockType type, void *lock)
   if (pthread_cond_init(&cond, nullptr) != 0) {
     throw std::runtime_error("Failed to initialize condition variable");
   }
+
+  // **Add initialization of condMutex**
+  if (pthread_mutex_init(&queueMutex, nullptr) != 0) {
+    throw std::runtime_error("Failed to initialize condition mutex");
+  }
 }
 
 // Destructor
 TaskQueue::~TaskQueue() {
-  if (mutexLock != nullptr) {
-    delete mutexLock;
-    mutexLock = nullptr;
-  }
-  if (rwLock != nullptr) {
-    delete rwLock;
-    rwLock = nullptr;
+  if (!isExternalLock) {
+    if (mutexLock != nullptr) {
+      delete mutexLock;
+      mutexLock = nullptr;
+    }
+    if (rwLock != nullptr) {
+      delete rwLock;
+      rwLock = nullptr;
+    }
   }
   pthread_cond_destroy(&cond);
+  pthread_mutex_destroy(&queueMutex);
 }
 
-// lock the queue, based on the lock type
 void TaskQueue::lock() {
   if (lockType == LockType::Mutex) {
-    if (mutexLock) {
-      mutexLock->mutexLockOn();
-    } else {
-      throw std::runtime_error("MutexLock is not initialized");
-    }
+    mutexLock->mutexLockOn();
   } else if (lockType == LockType::RWLock) {
-    if (rwLock) {
-      rwLock->writeLock();
-    } else {
-      throw std::runtime_error("RWLock is not initialized");
-    }
+    rwLock->writeLock();
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -65,17 +63,9 @@ void TaskQueue::lock() {
 // unlock the queue, based on the lock type
 void TaskQueue::unlock() {
   if (lockType == LockType::Mutex) {
-    if (mutexLock) {
-      mutexLock->mutexUnlock();
-    } else {
-      throw std::runtime_error("MutexLock is not initialized");
-    }
+    mutexLock->mutexUnlock();
   } else if (lockType == LockType::RWLock) {
-    if (rwLock) {
-      rwLock->writeUnlock();
-    } else {
-      throw std::runtime_error("RWLock is not initialized");
-    }
+    rwLock->writeUnlock();
   } else {
     throw std::invalid_argument("Invalid lock type");
   }
@@ -83,42 +73,27 @@ void TaskQueue::unlock() {
 
 // enqueue tasks
 void TaskQueue::enqueue(const Task &t) {
-  lock();             // lock the queue
-  tasksQueue.push(t); // add the task to the queue
+  pthread_mutex_lock(&queueMutex); // lock the condition mutex
+  tasksQueue.push(t);              // add the task to the queue
   // print for debugging ---------------------------------------------
   std::cout << "[TaskQueue] Enqueued Task ID: " << t.id << ", Name: " << t.name
             << std::endl;
   // ----------------------------------------------------------------------
-  unlock();                   // unlock the queue
-  pthread_cond_signal(&cond); // signal the condition
+  pthread_mutex_unlock(&queueMutex); // unlock the queue
+  pthread_cond_signal(&cond);        // Notify a waiting thread
 }
 
 // dequeue tasks
 bool TaskQueue::dequeue(Task &t) {
-  unique_lock<mutex> lock(condMtx); // lock the condition mutex
+  pthread_mutex_lock(&queueMutex); // Lock condition mutex
 
-  // native_handle() returns the underlying native handle type
-  pthread_cond_wait(&cond, condMtx.native_handle()); // wait for the condition
-
-  this->lock(); // lock the queue
-
-  if (lockType == LockType::NoLock) {
-    if (tasksQueue.empty()) {
-      unlock();
-      return false; // No task to dequeue
-    }
+  while (tasksQueue.empty()) { // Wait until there is a task
+    pthread_cond_wait(&cond, &queueMutex);
   }
 
-  while (tasksQueue.empty() && lockType != LockType::NoLock) {
-    if (lockType == LockType::Mutex && mutexLock) {
-      cout << "Queue is empty, waiting for tasks" << endl;
-      mutexLock->waitOnCondition(&cond); // wait for the condition
-    } else if (lockType == LockType::RWLock && rwLock) {
-      rwLock->writeLock(); // Ensure exclusive access for condition wait
-      pthread_cond_wait(&cond, condMtx.native_handle());
-      rwLock->writeUnlock();
-    }
-  }
+  pthread_mutex_unlock(&queueMutex); // Unlock condition mutex
+
+  lock(); // lock the queue
 
   if (!tasksQueue.empty()) {
     Task frontTask = tasksQueue.front();

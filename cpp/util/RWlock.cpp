@@ -16,24 +16,14 @@ RWLock::~RWLock() { pthread_rwlock_destroy(&rwlock); }
 void RWLock::readLock() {
   if (pthread_rwlock_tryrdlock(&rwlock) != 0) {
     readContentionByWriteCount++;
-    cout << "[DEBUG] Read lock contention detected. Current count: "
-         << readContentionByWriteCount << endl;
     pthread_rwlock_rdlock(&rwlock); // Block until read lock is acquired
-    cout << "[DEBUG] Read lock acquired after contention." << endl;
-  } else {
-    cout << "[DEBUG] Read lock acquired immediately." << endl;
   }
 }
 
 void RWLock::writeLock() {
   if (pthread_rwlock_trywrlock(&rwlock) != 0) {
     writeContentionCount++;
-    cout << "[DEBUG] Write lock contention detected. Current count: "
-         << writeContentionCount << endl;
     pthread_rwlock_wrlock(&rwlock); // Block until write lock is acquired
-    cout << "[DEBUG] Write lock acquired after contention." << endl;
-  } else {
-    cout << "[DEBUG] Write lock acquired immediately." << endl;
   }
 }
 

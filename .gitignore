@@ -1,7 +1,19 @@
+# Ignore build directory
 build/
+
+# Ignore VSCode settings
 .vscode
+
+# Ignore macOS system files
 .DS_Store
 
-
-
+# Ignore executable files (assuming they don't have an extension)
 cpp/tests/LockTest
+cpp/tests/testCSV
+
+# Ignore all executable files (no extension)
+*~
+
+# Ignore all CSV files
+*.csv
+cpp/tests/testTaskQueue

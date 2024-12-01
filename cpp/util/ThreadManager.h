@@ -12,7 +12,7 @@ private:
   std::unordered_map<pthread_t, std::string> threadStatus;
 
 public:
-  ThreadManager(/* args */);
+  ThreadManager();
   ~ThreadManager();
 
   void createThread(void *(*startRoutine)(void *), void *arg,

@@ -5,6 +5,7 @@
 #include "util/RWLock.h"
 
 #include <iostream>
+#include <pthread.h>
 #include <queue>
 #include <string>
 
@@ -20,12 +21,14 @@ private:
   LockType lockType; // type of lock, mutex or rwlock
   MutexLock *mutexLock;
   RWLock *rwLock;
-  
-  pthread_cond_t cond; // provide wait and signal functionality
-  std::mutex condMtx;      // mutex for condition variable, for thread safety
+
+  pthread_cond_t cond;       // provide wait and signal functionality
+  pthread_mutex_t queueMutex; // mutex for condition variable, for thread safety
 
   void lock();   // lock the queue, based on the lock type
   void unlock(); // unlock the queue, based on the lock type
+
+  bool isExternalLock; // check if the lock is external
 
 public:
   TaskQueue(LockType type, void *lock = nullptr);
