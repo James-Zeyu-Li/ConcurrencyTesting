@@ -2,13 +2,11 @@
 #include <iostream>
 #include <stdexcept>
 
+using namespace std;
+
 ThreadManager::ThreadManager() {}
 
-ThreadManager::~ThreadManager() {
-  for (auto &thread : threadList) {
-    pthread_cancel(thread);
-  }
-}
+ThreadManager::~ThreadManager() {}
 
 //------------------Thread management------------------
 void ThreadManager::createThread(void *(*startRoutine)(void *), void *arg,
@@ -31,19 +29,29 @@ void ThreadManager::createThread(void *(*startRoutine)(void *), void *arg,
 
   threadList.push_back(*threadPtr);
   threadStatus[*threadPtr] = "Running";
+
+  cout << "[ThreadManager::createThread] Thread " << *threadPtr
+       << " created successfully." << endl;
 }
 
 // join thread, wait for the thread to finish
 void ThreadManager::joinAllThreads() {
   for (auto &thread : threadList) {
-    pthread_join(thread, nullptr);
-    threadStatus[thread] = "Finished";
+    std::cout << "[joinAllThreads] Waiting for thread: " << thread << std::endl;
+    int result = pthread_join(thread, nullptr);
+    if (result == 0) {
+      threadStatus[thread] = "Finished";
+      std::cout << "[joinAllThreads] Thread " << thread << " finished."
+                << std::endl;
+    } else {
+      std::cerr << "[joinAllThreads] Error joining thread: " << thread
+                << ", error code: " << result << std::endl;
+    }
   }
   threadList.clear();
 }
-
 // exit thread
-void ThreadManager::exitThread() { pthread_exit(NULL); }
+// void ThreadManager::exitThread() { pthread_exit(NULL); }
 
 //------------------Thread status------------------
 

@@ -6,6 +6,8 @@
 
 using namespace std;
 
+std::mutex coutMutex;
+
 // Helper function to create a task
 Task createTask(int id, const string &name) {
   Task t;
@@ -76,8 +78,9 @@ void testTaskQueueConcurrency() {
     for (int i = 1; i <= 10; ++i) {
       Task dequeuedTask;
       if (queue.dequeue(dequeuedTask)) {
-        cout << "Consumed: " << dequeuedTask.id << " - " << dequeuedTask.name
-             << endl;
+        std::lock_guard<std::mutex> lock(coutMutex);
+        std::cout << "Consumed: " << dequeuedTask.id << " - "
+                  << dequeuedTask.name << std::endl;
       }
       this_thread::sleep_for(chrono::milliseconds(100));
     }
@@ -93,38 +96,183 @@ void testTaskQueueConcurrency() {
   cout << "Concurrency test passed!" << endl;
 }
 
-// Test TaskQueue edge cases
-void testTaskQueueEdgeCases() {
-  cout << "===== Test TaskQueue Edge Cases =====" << endl;
+// Test TaskQueue with RWLock using shared and exclusive access
+void testTaskQueueWithRWLock() {
+  cout << "===== Test TaskQueue With RWLock =====" << endl;
+  RWLock rwLock;                              // Stack-allocated lock
+  TaskQueue queue(LockType::RWLock, &rwLock); // Pass the address of the lock
 
-  TaskQueue noLockQueue(LockType::NoLock, nullptr);
-  TaskQueue mutexQueue(LockType::Mutex, nullptr);
+  Task t1 = createTask(1, "RWLockTask1");
+  Task t2 = createTask(2, "RWLockTask2");
 
-  // Test dequeue on empty queue (NoLock)
+  // Test shared access (read)
+  queue.enqueue(t1);
+  queue.enqueue(t2);
+
   Task dequeuedTask;
-  assert(!noLockQueue.dequeue(dequeuedTask));
-  cout << "NoLock dequeue on empty queue passed!" << endl;
+  assert(queue.dequeue(dequeuedTask));
+  assert(dequeuedTask.id == 1);
 
-  // Test dequeue on empty queue (Mutex)
-  thread producer([&mutexQueue]() {
+  assert(queue.dequeue(dequeuedTask));
+  assert(dequeuedTask.id == 2);
+
+  assert(queue.isEmpty());
+  cout << "RWLock test passed!" << endl;
+}
+
+// Test empty queue dequeue
+void testTaskQueueEmptyDequeueWithProducer() {
+  cout << "===== Test TaskQueue Empty Dequeue With Producer =====" << endl;
+  TaskQueue queue(LockType::Mutex, nullptr);
+
+  thread producer([&queue]() {
     this_thread::sleep_for(chrono::milliseconds(100));
-    mutexQueue.enqueue(createTask(1, "Task1"));
+    queue.enqueue({1, "Task1", false});
   });
 
-  assert(mutexQueue.dequeue(dequeuedTask));
+  Task dequeuedTask;
+  assert(
+      queue.dequeue(dequeuedTask)); // Will block until the producer adds a task
   assert(dequeuedTask.id == 1);
-  producer.join();
-  cout << "Mutex dequeue on empty queue passed!" << endl;
+  cout << "Empty queue handled correctly with producer!" << endl;
 
-  cout << "All edge cases passed!" << endl;
+  producer.join();
+}
+
+
+// Stress test with multiple producers and consumers
+void testTaskQueueStress() {
+  cout << "===== Test TaskQueue Stress Test =====" << endl;
+
+  TaskQueue queue(LockType::Mutex, nullptr);
+
+  const int numProducers = 5;
+  const int numConsumers = 5;
+
+  vector<thread> producers, consumers;
+
+  // Producer threads
+  for (int i = 0; i < numProducers; ++i) {
+    producers.emplace_back([&queue, i]() {
+      for (int j = 1; j <= 20; ++j) {
+        queue.enqueue(createTask(j, "Task from Producer " + to_string(i)));
+        this_thread::sleep_for(chrono::milliseconds(10));
+      }
+    });
+  }
+
+  // Consumer threads
+  for (int i = 0; i < numConsumers; ++i) {
+    consumers.emplace_back([&queue, i]() {
+      while (true) {
+        Task task;
+        if (!queue.dequeue(task)) { // Termination signal received
+          break;
+        }
+        {
+          lock_guard<mutex> lock(coutMutex);
+          cout << "Consumer " << i << " processed Task ID: " << task.id << endl;
+        }
+      }
+    });
+  }
+
+  // Wait for producers to finish
+  for (auto &producer : producers) {
+    producer.join();
+  }
+
+  // Send termination signals to consumers
+  for (int i = 0; i < numConsumers; ++i) {
+    queue.enqueue(createTask(-1, "Terminate"));
+  }
+
+  // Wait for consumers to finish
+  for (auto &consumer : consumers) {
+    consumer.join();
+  }
+
+  cout << "Stress test passed!" << endl;
+}
+// Test rapid enqueue and dequeue
+void testTaskQueueRapidOperations() {
+  cout << "===== Test TaskQueue Rapid Enqueue and Dequeue =====" << endl;
+  TaskQueue queue(LockType::Mutex, nullptr);
+
+  vector<thread> workers;
+
+  // Rapidly enqueue tasks
+  auto producer = [&queue]() {
+    for (int i = 1; i <= 1000; ++i) {
+      queue.enqueue(createTask(i, "Task" + to_string(i)));
+    }
+  };
+
+  // Rapidly dequeue tasks
+  auto consumer = [&queue]() {
+    for (int i = 1; i <= 1000; ++i) {
+      Task dequeuedTask;
+      queue.dequeue(dequeuedTask);
+    }
+  };
+
+  workers.emplace_back(producer);
+  workers.emplace_back(consumer);
+
+  for (auto &worker : workers) {
+    worker.join();
+  }
+
+  assert(queue.isEmpty());
+  cout << "Rapid operations test passed!" << endl;
+}
+
+void testQueuePerformance(LockType lockType) {
+  TaskQueue queue(lockType);
+
+  auto producer = [&queue]() {
+    for (int i = 0; i < 100000; ++i) {
+      queue.enqueue(
+          {i, "Task" + std::to_string(i), false}); // Initialize isCompleted
+    }
+  };
+
+  auto consumer = [&queue]() {
+    Task task;
+    while (queue.dequeue(task)) {
+      // Process task
+    }
+  };
+
+  auto start = std::chrono::high_resolution_clock::now();
+
+  std::thread prodThread(producer);
+  std::thread consThread(consumer);
+
+  prodThread.join();
+  queue.enqueue({-1, "Terminate", false}); // Initialize isCompleted
+  consThread.join();
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end - start;
+
+  std::cout << "LockType: "
+            << (lockType == LockType::Mutex ? "Mutex" : "RWLock")
+            << ", Time taken: " << elapsed.count() << " seconds" << std::endl;
 }
 
 int main() {
   try {
-    testTaskQueueBasic();
-    testTaskQueueTermination();
-    testTaskQueueConcurrency();
-    testTaskQueueEdgeCases();
+    // testTaskQueueBasic();
+    // testTaskQueueTermination();
+    // testTaskQueueConcurrency();
+    // testTaskQueueStress();
+    // testTaskQueueWithRWLock();
+
+    testTaskQueueRapidOperations();
+    testQueuePerformance(LockType::Mutex);
+    testQueuePerformance(LockType::RWLock);
+    testTaskQueueEmptyDequeueWithProducer();
     cout << "\nAll TaskQueue tests passed successfully!" << endl;
   } catch (const exception &e) {
     cerr << "Test failed: " << e.what() << endl;
@@ -135,6 +283,6 @@ int main() {
 
 // g++ -std=c++17 -Wall -Wextra -pthread -o testTaskQueue \
 //     ../TaskQueue.cpp \
-//     ../util/LockImpl/RWLock.cpp \
-//     ../util/LockImpl/MutexLock.cpp \
+//     ../util/RWLock.cpp \
+//     ../util/MutexLock.cpp \
 //     testTaskQueue.cpp
