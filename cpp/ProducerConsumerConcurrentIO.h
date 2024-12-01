@@ -31,6 +31,8 @@ private:
 
   void executeTask(const Task &task);
   static std::atomic<int> globalTaskCounter;
+  std::atomic<int> tasksCompleted{0};
+  std::atomic<bool> readCompleted{false};
 
 public:
   ProducerConsumerConcurrentIO(const std::string &filePath, TaskQueue &queue);

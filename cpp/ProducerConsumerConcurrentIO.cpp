@@ -38,6 +38,7 @@ void ProducerConsumerConcurrentIO::executeTask(const Task &task) {
   }
 
   cout << "Executing task: " << task.id << " " << task.name << ::endl;
+  tasksCompleted.fetch_add(1);
 }
 
 // Initiate Global Counter
@@ -177,7 +178,7 @@ void *ProducerConsumerConcurrentIO::readerThread(void *arg) {
 
   while (!manager->stopReader) {
     try {
-      this_thread::sleep_for(chrono::milliseconds(500)); // Adjust timing
+      this_thread::sleep_for(chrono::milliseconds(100)); // Adjust timing
       auto rows = manager->csvHandler->readAll();
       cout << "Reader Thread CSV Content:" << endl;
       for (const auto &row : rows) {
@@ -188,11 +189,13 @@ void *ProducerConsumerConcurrentIO::readerThread(void *arg) {
       }
 
       // check if all tasks are read, then stop the reader
-      if (rows.size() >= static_cast<size_t>(manager->taskQueue->queueSize())) {
+      if (rows.size() >= static_cast<std::size_t>(manager->tasksCompleted)) {
         cout << "  Reader   All tasks read from CSV" << endl;
-        manager->stopReader = true; // Stop the reader
+        manager->readCompleted.store(true);
         break;
       }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     } catch (const exception &e) {
       cerr << "Reader error: " << e.what() << endl;
@@ -243,8 +246,9 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
     startReaderThread();
   }
 
-  // wait for the producer threads to finish
-  this_thread::sleep_for(chrono::seconds(15));
+  while (tasksCompleted < produceCount) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
 
   // stop the producer threads
   stopProducerThread();
@@ -252,13 +256,13 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
   // if the test is successful, stop the consumer and reader threads
   stopConsumerThread(consumerThreads);
 
-  this_thread::sleep_for(chrono::seconds(10));
-
-  cout << "[test] Joining all threads..." << endl;
+  while (!readCompleted.load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
 
   stopReaderThread();
-  this_thread::sleep_for(chrono::seconds(5));
 
+  cout << "[test] Joining all threads..." << endl;
   threadManager.joinAllThreads();
 
   // Verify CSV content, check if all tasks are written
