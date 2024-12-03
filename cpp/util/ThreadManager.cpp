@@ -1,4 +1,5 @@
 #include "ThreadManager.h"
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
@@ -76,4 +77,22 @@ void ThreadManager::printThreadStatus() {
   for (const auto &entry : threadStatus) {
     std::cout << "Thread " << entry.first << ": " << entry.second << std::endl;
   }
+}
+
+void ThreadManager::recordThreadRunTime(pthread_t thread, long time) {
+  threadRunTime[thread] += time;
+}
+
+void ThreadManager::incrementBlockCount(pthread_t thread) {
+  threadBlockCount[thread]++;
+}
+
+void ThreadManager::exportThreadMetrics(const std::string &filePath) {
+  std::ofstream file(filePath);
+  file << "ThreadID,Status,RunTime(us),BlockCount\n";
+  for (const auto &thread : threadList) {
+    file << thread << "," << threadStatus[thread] << ","
+         << threadRunTime[thread] << "," << threadBlockCount[thread] << "\n";
+  }
+  file.close();
 }

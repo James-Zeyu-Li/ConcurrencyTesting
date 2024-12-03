@@ -17,7 +17,6 @@ void MutexLock::mutexLockOn() {
     mutexContentionCount++;
     pthread_mutex_lock(&mutex);
   }
-  cout << "thread " << pthread_self() << " Mutex lock acquired." << endl;
 }
 
 void MutexLock::mutexUnlock() { pthread_mutex_unlock(&mutex); }

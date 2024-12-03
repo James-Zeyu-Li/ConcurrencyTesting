@@ -1,3 +1,4 @@
+// Custom tasks as main entry point
 #include "ProducerConsumerConcurrentIO.h"
 #include <fstream>
 #include <iostream>
@@ -7,10 +8,10 @@
 using namespace std;
 
 ProducerConsumerConcurrentIO::ProducerConsumerConcurrentIO(
-    const string &filePath, TaskQueue &queue)
-    : csvHandler(make_unique<CSVHandler>(filePath, LockType::Mutex)),
-      taskQueue(&queue), stopProducer(false), stopConsumer(false),
-      stopReader(false) {}
+    const string &filePath, std::shared_ptr<TaskQueue> queue, LockType lockType)
+    : csvHandler(make_unique<CSVHandler>(filePath, lockType)), taskQueue(queue),
+      stopProducer(false), stopConsumer(false), stopReader(false),
+      tasksCompleted(0), readCompleted(false) {}
 
 // get the CSV content, for testing purposes, read all rows
 vector<vector<string>> ProducerConsumerConcurrentIO::getCSVContent() {
@@ -122,9 +123,12 @@ void ProducerConsumerConcurrentIO::stopProducerThread() {
 // consumer thread ------------------------------
 // consumer thread function, 100ms sleep between each task
 void *ProducerConsumerConcurrentIO::consumerThread(void *arg) {
+  pthread_t threadId = pthread_self();
+  int taskCount = 0;
+
   ProducerConsumerConcurrentIO *manager =
       static_cast<ProducerConsumerConcurrentIO *>(arg);
-  std::cout << "[consumerThread] Started, waiting for tasks..." << std::endl;
+  cout << "[consumerThread] Started, waiting for tasks..." << endl;
 
   while (!manager->stopConsumer) {
     Task t;
@@ -135,22 +139,24 @@ void *ProducerConsumerConcurrentIO::consumerThread(void *arg) {
       }
       cout << "[consumerThread] Processing Task ID: " << t.id << endl;
       manager->executeTask(t);
+      taskCount++;
     } else {
-      // check if producer has stopped
+      // Check if the producer is still producing and the queue is empty
       if (manager->stopProducer && manager->taskQueue->isEmpty()) {
-        cout << "No more tasks and producer has stopped. Exiting consumer "
-                "thread."
+        cout << "[consumerThread] No more tasks and producer has stopped. "
+                "Exiting consumer thread."
              << endl;
         break;
       }
       cout << "[consumerThread] Waiting for tasks..." << endl;
-      this_thread::sleep_for(chrono::milliseconds(100));
+      this_thread::sleep_for(
+          chrono::milliseconds(100)); // Adjust timing to avoid busy waiting
     }
   }
+
   cout << "[consumerThread] Exiting normally." << endl;
   return nullptr;
 }
-
 // start the consumer thread
 void ProducerConsumerConcurrentIO::startConsumerThread() {
   stopConsumer = false;
@@ -225,39 +231,43 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
                                                int readerThreads,
                                                int consumerThreads,
                                                int writeCount) {
-  // average job per thread
-  int tasksPerProducer = produceCount / producerThreads;
-  int remainingTasks = produceCount % producerThreads;
+  // 总任务数
+  int totalTasks = produceCount;
 
+  // 平均分配任务给每个生产者
+  int tasksPerProducer = totalTasks / producerThreads;
+  int remainingTasks = totalTasks % producerThreads;
+
+  // 启动生产者线程
   for (int i = 0; i < producerThreads; ++i) {
     int numTasks = tasksPerProducer + (i < remainingTasks ? 1 : 0);
     cout << "Producer thread " << i << " assigned " << numTasks << " tasks.\n";
-
-    // task assignment to producer threads
-    startProducerThread(numTasks);
+    startProducerThread(numTasks); // 启动生产者线程
   }
-  // activate consumer thread
+
+  // 启动消费者线程，所有消费者共同处理队列中的任务
   for (int i = 0; i < consumerThreads; ++i) {
-    startConsumerThread();
+    startConsumerThread(); // 启动消费者线程
   }
 
-  // activate reader thread
+  // 启动读者线程，所有读者线程读取 CSV 文件中的任务
   for (int i = 0; i < readerThreads; ++i) {
-    startReaderThread();
+    startReaderThread(); // 启动读者线程
   }
 
-  while (tasksCompleted < produceCount) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  // 等待所有任务完成
+  while (tasksCompleted < totalTasks) {
+    this_thread::sleep_for(chrono::milliseconds(200));
   }
 
-  // stop the producer threads
+  // 停止生产者线程
   stopProducerThread();
 
-  // if the test is successful, stop the consumer and reader threads
+  // 停止消费者线程
   stopConsumerThread(consumerThreads);
 
   while (!readCompleted.load()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    this_thread::sleep_for(chrono::milliseconds(200));
   }
 
   stopReaderThread();
@@ -265,7 +275,7 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
   cout << "[test] Joining all threads..." << endl;
   threadManager.joinAllThreads();
 
-  // Verify CSV content, check if all tasks are written
+  // 验证 CSV 内容，确保所有任务已写入
   try {
     auto rows = csvHandler->readAll();
     if (rows.size() >= static_cast<size_t>(writeCount)) {
@@ -277,4 +287,54 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
   } catch (const ::exception &e) {
     cerr << " Error verifying CSV content: " << e.what() << endl;
   }
+}
+
+// Getters for statistics
+int ProducerConsumerConcurrentIO::getGlobalTaskCounter() {
+  return globalTaskCounter.load();
+}
+
+int ProducerConsumerConcurrentIO::getTasksCompleted() const {
+  return tasksCompleted.load();
+}
+
+bool ProducerConsumerConcurrentIO::isReadCompleted() const {
+  return readCompleted.load();
+}
+
+std::shared_ptr<TaskQueue> ProducerConsumerConcurrentIO::getTaskQueue() const {
+  return taskQueue;
+}
+
+const std::map<pthread_t, int> &
+ProducerConsumerConcurrentIO::getThreadTaskCount() const {
+  return threadTaskCount;
+}
+
+const std::map<pthread_t, long long> &
+ProducerConsumerConcurrentIO::getThreadActiveTime() const {
+  return threadActiveTime;
+}
+
+const std::vector<pthread_t> &
+ProducerConsumerConcurrentIO::getProducerThreadIds() const {
+  return producerThreadIds;
+}
+
+const std::vector<pthread_t> &
+ProducerConsumerConcurrentIO::getConsumerThreadIds() const {
+  return consumerThreadIds;
+}
+
+const std::vector<pthread_t> &
+ProducerConsumerConcurrentIO::getReaderThreadIds() const {
+  return readerThreadIds;
+}
+
+void ProducerConsumerConcurrentIO::resetGlobalTaskCounter() {
+  globalTaskCounter.store(1);
+}
+
+ThreadManager &ProducerConsumerConcurrentIO::getThreadManager() {
+  return threadManager;
 }

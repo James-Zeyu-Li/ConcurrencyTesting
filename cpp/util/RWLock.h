@@ -7,8 +7,8 @@
 class RWLock {
 private:
   pthread_rwlock_t rwlock;
-  std::atomic<int> readContentionByWriteCount;
-  std::atomic<int> writeContentionCount;
+  std::atomic<int> readContentionByWriteCount{0};
+  std::atomic<int> writeContentionCount{0};
 
 public:
   RWLock();

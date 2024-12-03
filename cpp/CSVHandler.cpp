@@ -1,11 +1,14 @@
 #include "CSVHandler.h" // Ensure this file exists in the same directory or update the include path
+#include <iostream>
 #include <stdexcept>
 
 using namespace std;
 // test this is being send to Git
 //  constructor, check if the file exists, if not create a new file
 CSVHandler::CSVHandler(const string &path, LockType lockType)
-    : filePath(path), lockType(lockType) {
+    : filePath(path), lockType(lockType), totalWriteTime(0), totalReadTime(0),
+      maxWriteTime(0), minWriteTime(LONG_MAX), maxReadTime(0),
+      minReadTime(LONG_MAX), writeCount(0), readCount(0) {
   // check if the file exists
   if (!fileStream.is_open()) {
     ofstream newFile(filePath); // create a new file
@@ -62,14 +65,18 @@ void CSVHandler::unlock(LockType lockType, LockOperation operation) {
 }
 
 // write a row from CSV file, file open in append mode
-void CSVHandler::writeRow(const std::vector<std::string> &row) {
+void CSVHandler::writeRow(const vector<string> &row) {
+  // start time for benchmarking
+  auto start = chrono::high_resolution_clock::now();
+  //----------------------------------------------
+
   lock(lockType, LockOperation::Write);
   try {
     // use a local stream to write the file
-    std::ofstream localStream(filePath, std::ios::out | std::ios::app);
+    ofstream localStream(filePath, ios::out | ios::app);
     if (!localStream.is_open()) {
       unlock(lockType, LockOperation::Write);
-      throw std::runtime_error("Cannot open file: " + filePath);
+      throw runtime_error("Cannot open file: " + filePath);
     }
 
     for (size_t i = 0; i < row.size(); ++i) {
@@ -78,34 +85,43 @@ void CSVHandler::writeRow(const std::vector<std::string> &row) {
         localStream << ",";
       }
     }
-    localStream << std::endl;
+    localStream << endl;
+
+    writeCount++; // increment the write count
 
     if (localStream.fail()) {
-      throw std::runtime_error("File write operation failed: " + filePath);
+      throw runtime_error("File write operation failed: " + filePath);
     }
 
-    // print for  confirmation
-    std::cout << "Row written successfully: ";
-    for (const auto &col : row) {
-      std::cout << col << " ";
-    }
-    std::cout << std::endl;
-
-  } catch (const std::exception &e) {
-    std::cerr << "Error writing row to file: " << e.what() << std::endl;
+  } catch (const exception &e) {
+    cerr << "Error writing row to file: " << e.what() << endl;
     unlock(lockType, LockOperation::Write); // make sure to unlock
     throw;
   } catch (...) {
-    std::cerr << "Unknown error occurred during write operation." << std::endl;
+    cerr << "Unknown error occurred during write operation." << endl;
     unlock(lockType, LockOperation::Write); // make sure to unlock
     throw;
   }
 
   unlock(lockType, LockOperation::Write); // unlock after successful operation
+
+  // Benchmark Tools, time calculation
+  auto end = chrono::high_resolution_clock::now();
+  long duration =
+      chrono::duration_cast<chrono::microseconds>(end - start).count();
+
+  totalWriteTime += duration;
+  maxWriteTime = max(maxWriteTime.load(), duration);
+  minWriteTime = min(minWriteTime.load(), duration);
+  //----------------------------------------------
 }
 
 // read all from CSV file, file open in read mode
 vector<vector<string>> CSVHandler::readAll() {
+  // Benchmark Tools, time calculation
+  auto start = chrono::high_resolution_clock::now();
+  //----------------------------------------------
+
   // lock the file, enum LockOperation::Read
   lock(lockType, LockOperation::Read);
   vector<vector<string>> data;
@@ -128,6 +144,8 @@ vector<vector<string>> CSVHandler::readAll() {
       data.push_back(row); // add the row to the data
     }
 
+    readCount++; // increment the read count
+
     if (localStream.fail() && !localStream.eof()) {
       throw runtime_error("Error reading file: " + filePath);
     }
@@ -145,6 +163,18 @@ vector<vector<string>> CSVHandler::readAll() {
   }
 
   unlock(lockType, LockOperation::Read);
+
+  // Benchmark Tools, time calculation
+  auto end = chrono::high_resolution_clock::now();
+  long duration =
+      chrono::duration_cast<chrono::microseconds>(end - start).count();
+
+  totalReadTime += duration;
+  maxReadTime = max(maxReadTime.load(), duration);
+  minReadTime = min(minReadTime.load(), duration);
+
+  //----------------------------------------------
+
   return data;
 }
 
@@ -171,7 +201,7 @@ void CSVHandler::clear() {
     // Successfully cleared the file
     cout << "CSV file cleared successfully." << endl;
 
-  } catch (const std::ios_base::failure &e) {
+  } catch (const ios_base::failure &e) {
     cerr << "I/O error while clearing file: " << e.what() << endl;
     unlock(lockType, LockOperation::Write); // Ensure lock is released
     throw;
@@ -213,3 +243,43 @@ void CSVHandler::closeStream() {
     cout << "File stream closed successfully." << endl;
   }
 }
+
+// Getters for benchmark statistics
+// ----------------------------------------------
+long CSVHandler::getTotalWriteTime() const { return totalWriteTime; }
+long CSVHandler::getTotalReadTime() const { return totalReadTime; }
+long CSVHandler::getMaxWriteTime() const { return maxWriteTime; }
+long CSVHandler::getMinWriteTime() const { return minWriteTime; }
+long CSVHandler::getMaxReadTime() const { return maxReadTime; }
+long CSVHandler::getMinReadTime() const { return minReadTime; }
+int CSVHandler::getWriteCount() const { return writeCount; }
+int CSVHandler::getReadCount() const { return readCount; }
+
+int CSVHandler::getMutexContention() const {
+  return fileMutex.getContentionCount(); // 从 MutexLock 获取争用统计
+}
+
+int CSVHandler::getRWReadContention() const {
+  return fileRWLock.getReadContentionByWriteCount(); // 从 RWLock 获取读争用统计
+}
+
+int CSVHandler::getRWWriteContention() const {
+  return fileRWLock.getWriteContentionCount(); // 从 RWLock 获取写争用统计
+}
+
+LockType CSVHandler::getLockType() const { return lockType; }
+
+RWLock *CSVHandler::getRWLock() {
+  if (lockType == LockType::RWLock) {
+    return &fileRWLock;
+  }
+  return nullptr;
+}
+
+MutexLock *CSVHandler::getMutexLock() {
+  if (lockType == LockType::Mutex) {
+    return &fileMutex;
+  }
+  return nullptr;
+}
+//----------------------------------------------

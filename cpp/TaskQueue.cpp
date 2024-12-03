@@ -13,24 +13,24 @@ TaskQueue::TaskQueue(LockType type, void *lock)
   } else if (type == LockType::Mutex) {
     mutexLock = new MutexLock();
     if (!mutexLock) {
-      throw std::runtime_error("Failed to allocate MutexLock");
+      throw runtime_error("Failed to allocate MutexLock");
     }
   } else if (type == LockType::RWLock) {
     rwLock = new RWLock();
     if (!rwLock) {
-      throw std::runtime_error("Failed to allocate RWLock");
+      throw runtime_error("Failed to allocate RWLock");
     }
   } else {
-    throw std::invalid_argument("Invalid lock type");
+    throw invalid_argument("Invalid lock type");
   }
 
   if (pthread_cond_init(&cond, nullptr) != 0) {
-    throw std::runtime_error("Failed to initialize condition variable");
+    throw runtime_error("Failed to initialize condition variable");
   }
 
   // **Add initialization of condMutex**
   if (pthread_mutex_init(&queueMutex, nullptr) != 0) {
-    throw std::runtime_error("Failed to initialize condition mutex");
+    throw runtime_error("Failed to initialize condition mutex");
   }
 }
 
@@ -56,7 +56,7 @@ void TaskQueue::lock() {
   } else if (lockType == LockType::RWLock) {
     rwLock->writeLock();
   } else {
-    throw std::invalid_argument("Invalid lock type");
+    throw invalid_argument("Invalid lock type");
   }
 }
 
@@ -67,24 +67,36 @@ void TaskQueue::unlock() {
   } else if (lockType == LockType::RWLock) {
     rwLock->writeUnlock();
   } else {
-    throw std::invalid_argument("Invalid lock type");
+    throw invalid_argument("Invalid lock type");
   }
 }
 
 // enqueue tasks
 void TaskQueue::enqueue(const Task &t) {
+  auto start = chrono::high_resolution_clock::now();
+
   pthread_mutex_lock(&queueMutex); // lock the condition mutex
-  tasksQueue.push(t);              // add the task to the queue
-  // print for debugging ---------------------------------------------
-  std::cout << "[TaskQueue] Enqueued Task ID: " << t.id << ", Name: " << t.name
-            << std::endl;
-  // ----------------------------------------------------------------------
-  pthread_mutex_unlock(&queueMutex); // unlock the queue
+  lock();
+  tasksQueue.push(t); // add the task to the queue
+  int currentLength = tasksQueue.size();
+  maxQueueLength = std::max(maxQueueLength.load(), currentLength);
+  unlock();                          // unlock the queue
+  pthread_mutex_unlock(&queueMutex); // unlock the queue]
   pthread_cond_signal(&cond);        // Notify a waiting thread
+
+  // Benchmark Tools, time calculation
+  auto end = chrono::high_resolution_clock::now();
+  long timeTaken =
+      chrono::duration_cast<chrono::microseconds>(end - start).count();
+  totalEnqueueTime += timeTaken;
+  enqueueCount++;
+  maxEnqueueTime = max(maxEnqueueTime.load(), timeTaken);
+  minEnqueueTime = min(minEnqueueTime.load(), timeTaken);
 }
 
 // dequeue tasks
 bool TaskQueue::dequeue(Task &t) {
+
   pthread_mutex_lock(&queueMutex); // Lock condition mutex
 
   while (tasksQueue.empty()) { // Wait until there is a task
@@ -92,15 +104,16 @@ bool TaskQueue::dequeue(Task &t) {
   }
 
   pthread_mutex_unlock(&queueMutex); // Unlock condition mutex
-
-  lock(); // lock the queue
+  lock();                            // lock the queue
 
   if (!tasksQueue.empty()) {
+    auto start = chrono::high_resolution_clock::now();
+
     Task frontTask = tasksQueue.front();
 
     // terminate the dequeue operation if termination signal is received
     if (frontTask.id == -1) { // Check for termination signal
-      std::cout << "Received termination signal. Exiting dequeue." << std::endl;
+      cout << "Received termination signal. Exiting dequeue." << endl;
       tasksQueue.pop(); // Remove the termination signal
       unlock();
       return false; // Indicate that termination signal was received
@@ -114,6 +127,17 @@ bool TaskQueue::dequeue(Task &t) {
     // ----------------------------------------------------------------------
 
     unlock(); // unlock the queue
+
+    // Benchmark Tools, time calculation, end time
+    auto end = chrono::high_resolution_clock::now();
+    long timeTaken =
+        chrono::duration_cast<chrono::microseconds>(end - start).count();
+    totalDequeueTime += timeTaken;
+    dequeueCount++;
+    maxDequeueTime = max(maxDequeueTime.load(), timeTaken);
+    minDequeueTime = min(minDequeueTime.load(), timeTaken);
+    // ----------------------------------------------
+
     return true;
   }
   unlock(); // unlock the queue
@@ -126,14 +150,9 @@ void TaskQueue::dequeueAll() {
   while (!tasksQueue.empty()) {
     Task t = tasksQueue.front();
     tasksQueue.pop(); // remove the task from the queue
-
-    // print for debugging ---------------------------------------------
-    cout << "All tasks are removed from the queue" << endl;
-    cout << "Task " << t.id << " is removed from the queue" << endl;
-    // ----------------------------------------------------------------------
   }
-
   unlock(); // unlock the queue
+  cout << "All tasks are removed from the queue" << endl;
 }
 
 // check if the queue is empty
@@ -151,3 +170,36 @@ int TaskQueue::queueSize() {
   unlock(); // unlock the queue
   return size;
 }
+
+// Benchmark metrics
+long TaskQueue::getTotalEnqueueTime() const { return totalEnqueueTime; }
+long TaskQueue::getTotalDequeueTime() const { return totalDequeueTime; }
+double TaskQueue::getAverageEnqueueTime() const {
+  return enqueueCount > 0 ? static_cast<double>(totalEnqueueTime) / enqueueCount
+                          : 0;
+}
+double TaskQueue::getAverageDequeueTime() const {
+  return dequeueCount > 0 ? static_cast<double>(totalDequeueTime) / dequeueCount
+                          : 0;
+}
+long TaskQueue::getMaxEnqueueTime() const { return maxEnqueueTime; }
+long TaskQueue::getMinEnqueueTime() const { return minEnqueueTime; }
+long TaskQueue::getMaxDequeueTime() const { return maxDequeueTime; }
+long TaskQueue::getMinDequeueTime() const { return minDequeueTime; }
+
+int TaskQueue::getBlockCount() const {
+  if (lockType == LockType::Mutex) {
+    return mutexLock ? mutexLock->getContentionCount() : 0;
+  } else if (lockType == LockType::RWLock) {
+    return rwLock ? rwLock->getWriteContentionCount() +
+                        rwLock->getReadContentionByWriteCount()
+                  : 0;
+  }
+  return 0;
+}
+
+// Lock management
+MutexLock *TaskQueue::getMutexLock() const { return mutexLock; }
+RWLock *TaskQueue::getRWLock() const { return rwLock; }
+
+int TaskQueue::getMaxQueueLength() const { return maxQueueLength; }
