@@ -245,25 +245,25 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
     startProducerThread(numTasks); // 启动生产者线程
   }
 
-  // 启动消费者线程，所有消费者共同处理队列中的任务
+  // activate consumer threads
   for (int i = 0; i < consumerThreads; ++i) {
-    startConsumerThread(); // 启动消费者线程
+    startConsumerThread(); // active consumer thread
   }
 
-  // 启动读者线程，所有读者线程读取 CSV 文件中的任务
+  // activate reader thread
   for (int i = 0; i < readerThreads; ++i) {
-    startReaderThread(); // 启动读者线程
+    startReaderThread(); 
   }
 
-  // 等待所有任务完成
+  // wait for all tasks to be completed
   while (tasksCompleted < totalTasks) {
     this_thread::sleep_for(chrono::milliseconds(200));
   }
 
-  // 停止生产者线程
+  // staop the producer thread
   stopProducerThread();
 
-  // 停止消费者线程
+  
   stopConsumerThread(consumerThreads);
 
   while (!readCompleted.load()) {
@@ -275,7 +275,7 @@ void ProducerConsumerConcurrentIO::customTasks(int producerThreads,
   cout << "[test] Joining all threads..." << endl;
   threadManager.joinAllThreads();
 
-  // 验证 CSV 内容，确保所有任务已写入
+  // try to read all tasks from the CSV file
   try {
     auto rows = csvHandler->readAll();
     if (rows.size() >= static_cast<size_t>(writeCount)) {
@@ -331,10 +331,10 @@ ProducerConsumerConcurrentIO::getReaderThreadIds() const {
   return readerThreadIds;
 }
 
-void ProducerConsumerConcurrentIO::resetGlobalTaskCounter() {
-  globalTaskCounter.store(1);
-}
-
 ThreadManager &ProducerConsumerConcurrentIO::getThreadManager() {
   return threadManager;
+}
+
+void ProducerConsumerConcurrentIO::resetGlobalTaskCounter() {
+  globalTaskCounter.store(1);
 }

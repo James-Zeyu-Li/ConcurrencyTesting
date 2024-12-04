@@ -9,7 +9,8 @@
 
 using namespace std;
 
-// 设置输出目录
+std::mutex coutMutex;
+
 void setupOutputDirectory(const string &outputPath) {
   if (!filesystem::exists(outputPath)) {
     filesystem::create_directories(outputPath);
@@ -23,13 +24,13 @@ void setupOutputDirectory(const string &outputPath) {
 void threadTestFunc(TaskQueue &taskQueue, int producerCount, int consumerCount,
                     int operationCount) {
   vector<thread> producers, consumers;
-  atomic<int> tasksProduced{0}; // 跟踪生产的任务数
-  atomic<int> tasksConsumed{0}; // 跟踪消费的任务数
+  atomic<int> tasksProduced{0}; // record the number of tasks produced
+  atomic<int> tasksConsumed{0}; // record the number of tasks consumed
 
   int tasksPerProducer = operationCount / producerCount;
-  int remainingTasks = operationCount % producerCount; // 用于处理余数任务
+  int remainingTasks = operationCount % producerCount;
 
-  // 启动生产者线程
+  // activate producer threads
   for (int i = 0; i < producerCount; ++i) {
     producers.emplace_back(
         [&taskQueue, &tasksProduced, tasksPerProducer, remainingTasks, i]() {
@@ -42,7 +43,7 @@ void threadTestFunc(TaskQueue &taskQueue, int producerCount, int consumerCount,
         });
   }
 
-  // 启动消费者线程
+  // activate consumer threads
   for (int i = 0; i < consumerCount; ++i) {
     consumers.emplace_back(
         [&taskQueue, &tasksConsumed, &tasksProduced, operationCount, i]() {
@@ -61,17 +62,16 @@ void threadTestFunc(TaskQueue &taskQueue, int producerCount, int consumerCount,
         });
   }
 
-  // 等待所有生产者线程完成
+  // wait for all producer threads to complete
   for (auto &producer : producers) {
     producer.join();
   }
 
-  // 添加终止信号，通知消费者退出
+  // Send termination signal to all consumer threads
   for (int i = 0; i < consumerCount; ++i) {
     taskQueue.enqueue(Task{-1, "Terminate", true});
   }
 
-  // 等待所有消费者线程完成
   for (auto &consumer : consumers) {
     consumer.join();
   }
@@ -122,11 +122,11 @@ void ioTestFunc(CSVHandler &csvHandler, int writerCount, int readerCount,
         rows.push_back("Writer_" + std::to_string(i) + ",Row_" +
                        std::to_string(j));
       }
-      csvHandler.writeRow(rows); // 批量写入
+      csvHandler.writeRow(rows);
     });
   }
 
-  // 等待写线程完成
+  // wait for all writer threads to complete
   for (auto &writer : writers) {
     writer.join();
   }
@@ -143,12 +143,12 @@ void ioTestFunc(CSVHandler &csvHandler, int writerCount, int readerCount,
     });
   }
 
-  // 等待读线程完成
+  // wait for all reader threads to complete
   for (auto &reader : readers) {
     reader.join();
   }
 
-  // 清空 CSV 文件
+  // clear the csv file
   csvHandler.clear();
   cout << "CSV file cleared." << endl;
 }
@@ -169,80 +169,69 @@ void runIOBenchmark() {
 }
 
 // -------------------------------------------------------------------
-//--
-//--
-//--
-//--
-//--
-//--
-//--
-// Custom test
-//     function-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-//     --void
-// void customTestFunc(const std::string &lockType,
-//                     std::shared_ptr<TaskQueue> taskQueue, int producerCount,
-//                     int consumerCount, int readerCount, int operationCount) {
-//   std::cout << "[customTestFunc] Starting with lockType: " << lockType
-//             << ", producerCount: " << producerCount
-//             << ", consumerCount: " << consumerCount
-//             << ", readerCount: " << readerCount
-//             << ", operationCount: " << operationCount << std::endl;
+// Custom benchmark test function and runCustomBenchmark--------------
+void customTestFunc(const std::string &lockType,          // 锁类型
+                    std::shared_ptr<TaskQueue> taskQueue, // 任务队列
+                    int producerCount, int consumerCount, int readerCount,
+                    int operationCount) {
+  // initialize ProducerConsumerConcurrentIO system object
+  ProducerConsumerConcurrentIO ioSystem(
+      "test_custom.csv", taskQueue,
+      lockType == "MutexLock" ? LockType::Mutex : LockType::RWLock);
 
-//   // Map lockType string to LockType enum
-//   LockType lockTypeEnum =
-//       (lockType == "MutexLock") ? LockType::Mutex : LockType::RWLock;
+  {
+    std::lock_guard<std::mutex> lock(coutMutex);
+    std::cout << "[customTestFunc] LockType: " << lockType
+              << ", ProducerCount: " << producerCount
+              << ", ConsumerCount: " << consumerCount
+              << ", ReaderCount: " << readerCount
+              << ", OperationCount: " << operationCount << std::endl;
+  }
+  // customs tasks
+  ioSystem.customTasks(producerCount, operationCount, readerCount,
+                       consumerCount, operationCount);
 
-//   // Create and initialize I/O system with correct LockType
-//   ProducerConsumerConcurrentIO ioSystem("custom_test.csv", taskQueue,
-//                                         lockTypeEnum);
+  // check for data consistency
+  int tasksProduced = ioSystem.getGlobalTaskCounter() - 1;
+  int tasksConsumed = ioSystem.getTasksCompleted();
+  if (tasksProduced != tasksConsumed) {
+    std::lock_guard<std::mutex> lock(coutMutex);
+    std::cerr << "[customTestFunc] Data inconsistency detected: Produced "
+              << tasksProduced << " tasks but consumed " << tasksConsumed
+              << " tasks." << std::endl;
+  } else {
+    std::lock_guard<std::mutex> lock(coutMutex);
+    std::cout << "[customTestFunc] All tasks matched: Produced "
+              << tasksProduced << ", Consumed " << tasksConsumed << std::endl;
+  }
 
-//   // Run custom tasks
-//   ioSystem.customTasks(producerCount, operationCount, readerCount,
-//                        consumerCount, operationCount);
+  std::cout << "[customTestFunc] Completed for LockType: " << lockType
+            << std::endl;
+}
 
-//   // Verify data consistency
-//   int tasksProduced = ioSystem.getGlobalTaskCounter() - 1;
-//   int tasksConsumed = ioSystem.getTasksCompleted();
-//   if (tasksProduced != tasksConsumed) {
-//     std::cerr << "[customTestFunc] Data inconsistency detected: Produced "
-//               << tasksProduced << " tasks but consumed " << tasksConsumed
-//               << " tasks." << std::endl;
-//   } else {
-//     std::cout << "[customTestFunc] All tasks matched: Produced "
-//               << tasksProduced << ", Consumed " << tasksConsumed <<
-//               std::endl;
-//   }
+void runCustomBenchmark() {
+  vector<string> lockTypes = {"MutexLock", "RWLock"};
+  vector<tuple<int, int, int>> customThreads = {
+      {1, 1, 1}, // 1 producer, 1 consumer, 1 reader
+      {4, 2, 4}, // 4 producers, 2 consumers, 4 readers
+      {2, 4, 2}, // 2 producers, 4 consumers, 2 readers
+  };
+  vector<int> customsJobOperationCounts = {10, 100, 1000};
 
-//   std::cout << "[customTestFunc] Test completed for lockType: " << lockType
-//             << std::endl;
-// }
+  {
+    std::lock_guard<std::mutex> lock(coutMutex);
+    std::cout << "Running Custom Benchmark...\n" << std::endl;
+  }
 
-// void runCustomBenchmark() {
-//   vector<string> lockTypes = {"MutexLock", "RWLock"};
-//   vector<tuple<int, int, int>> customThreads = {
-//       {1, 1, 1}, // 1 producer, 1 consumer, 1 reader
-//       {3, 3, 1}, // 4 producers, 4 consumers, 2 readers
-//       {4, 2, 4}, // 8 producers, 2 consumers, 4 readers
-//       {2, 4, 2}, // 8 producers, 2 consumers, 4 readers
+  // run custom benchmark
+  auto customResults = BenchmarkTool::runCustomBenchmark(
+      "Custom Test", lockTypes, customThreads, customsJobOperationCounts,
+      customTestFunc);
 
-//   };
-//   vector<int> customsJobOperationCounts = {10, 100, 1000, 5000};
+  // export results to CSV
+  BenchmarkTool::exportCustomResultsToCSV("ResultsCustom.csv", customResults);
+}
 
-//   cout << "Running Custom Benchmark...\n" << endl;
-
-//   auto customResults = BenchmarkTool::runCustomBenchmark(
-//       "Custom Test", lockTypes, customThreads, customsJobOperationCounts,
-//       customTestFunc);
-
-//   BenchmarkTool::exportCustomResultsToCSV("ResultsCustom.csv",
-//   customResults);
-// }
-//--
-//--
-//--
-//--
-//--
-//--
 //--
 // main function-----------------------------------------------------
 int main() {
@@ -255,7 +244,7 @@ int main() {
     runIOBenchmark();
     cout << "-----------------------------------------\n" << endl;
 
-    // runCustomBenchmark();
+    runCustomBenchmark();
     cout << "-----------------------------------------\n" << endl;
 
     cout << "Benchmarks completed successfully." << endl;

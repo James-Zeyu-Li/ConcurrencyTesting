@@ -50,6 +50,7 @@ public:
   };
 
   static std::mutex statsMutex;
+  static std::mutex coutMutex;
 
   // Corrected to return shared_ptr<TaskQueue>
   static std::shared_ptr<TaskQueue>
@@ -78,8 +79,6 @@ public:
       const std::vector<int> &operationCounts,
       void (*customTestFunc)(const std::string &, std::shared_ptr<TaskQueue>,
                              int, int, int, int));
-
-  void verifyDataConsistency(const ProducerConsumerConcurrentIO &ioSystem);
 
   // Export results to CSV
   static void
